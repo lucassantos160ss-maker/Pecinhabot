@@ -1,3 +1,11 @@
+import sys
+import types
+
+# Correção automática para o módulo imghdr removido nas versões recentes do Python
+m = types.ModuleType('imghdr')
+m.what = lambda *a, **kw: None
+sys.modules['imghdr'] = m
+
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
