@@ -16,6 +16,8 @@ import urllib.parse
 import uuid
 import json
 from datetime import datetime
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -23,6 +25,21 @@ from telegram.ext import (
     Filters,
     CallbackQueryHandler,
 )
+
+# ----------------------------------------------------
+# Mini Servidor Web para atender aos requisitos do Render
+# ----------------------------------------------------
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is running successfully!")
+
+def iniciar_servidor_web():
+    porta = int(os.environ.get("PORT", 10000))
+    servidor = HTTPServer(("0.0.0.0", porta), DummyHandler)
+    servidor.serve_forever()
 
 # ----------------------------------------------------
 # Gestão de Estoque e Saldo via JSON
@@ -494,6 +511,11 @@ def tratar_mensagem(update, context):
 # Main (Inicializacao)
 # ----------------------------------------------------
 if __name__ == '__main__':
+    # Inicia o servidor HTTP em background para o Render não derrubar o serviço
+    t = Thread(target=iniciar_servidor_web)
+    t.daemon = True
+    t.start()
+
     updater = Updater(TOKEN)
     dp = updater.dispatcher
 
@@ -506,6 +528,6 @@ if __name__ == '__main__':
     dp.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     dp.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Bot rodando com painel de estoque dinamico...")
+    print("Bot rodando com painel de estoque dinamico e servidor web ativo...")
     updater.start_polling()
     updater.idle()
