@@ -154,7 +154,7 @@ def start(update, context=None):
         "[\u200b]({})"
         "Ola {}, seja muito bem-vindo!\n\n"
         "Atencao: Este e um bot que vende a PRECO DE ATACADO!\n"
-        "Todos os nossos produtos estao saindo por apenas R$ 2,00.\n\n"
+        "Todos os nossos produtos estao saindo por apenas R$ 1,00.\n\n"
         "Precisa de ajuda? Chame o Suporte\n"
         "Informacoes Rapidas:\n"
         "- GGs com nomes e CPFs aleatorios.\n"
