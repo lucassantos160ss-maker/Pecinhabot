@@ -27,7 +27,7 @@ from telegram.ext import (
 )
 
 # ----------------------------------------------------
-# Mini Servidor Web para atender aos requisitos do Render
+# Mini Servidor Web para atender aos requisitos do Render (Keep-Alive)
 # ----------------------------------------------------
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -42,7 +42,7 @@ def iniciar_servidor_web():
     servidor.serve_forever()
 
 # ----------------------------------------------------
-# Gestão de Estoque e Saldo via JSON
+# Gestão de Estoque e Saldo via JSON (Persistência Real)
 # ----------------------------------------------------
 ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
@@ -80,6 +80,18 @@ def carregar_saldos():
 def salvar_saldos(saldos):
     with open(SALDOS_FILE, "w", encoding="utf-8") as f:
         json.dump(saldos, f, ensure_ascii=False, indent=4)
+
+def obter_saldo(user_id):
+    saldos = carregar_saldos()
+    if user_id not in saldos:
+        saldos[user_id] = 0.0
+        salvar_saldos(saldos)
+    return saldos[user_id]
+
+def atualizar_saldo(user_id, novo_valor):
+    saldos = carregar_saldos()
+    saldos[user_id] = float(novo_valor)
+    salvar_saldos(saldos)
 
 def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
     try:
@@ -128,14 +140,7 @@ PIX_API_URL = 'https://api.mercadopago.com/v1/payments'
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
 
-SALDOS_USUARIOS = carregar_saldos()
 PAGAMENTOS_PENDENTES = {}
-
-def obter_saldo(user_id):
-    if user_id not in SALDOS_USUARIOS:
-        SALDOS_USUARIOS[user_id] = 0.0
-        salvar_saldos(SALDOS_USUARIOS)
-    return SALDOS_USUARIOS[user_id]
 
 # ----------------------------------------------------
 # Comandos Principais
@@ -210,7 +215,7 @@ def ggs_disponiveis(update, context=None):
     
     for bin_id, info in dados_bins.items():
         qtd = len(info.get("estoque", []))
-        valor = info.get("valor", 2.0)
+        valor = 1.0  # Todos por 1 real
         str_valor = "{:.2f}".format(valor).replace('.', ',')
         
         btn_txt = "{} ({}) | R$ {}".format(bin_id, qtd, str_valor)
@@ -249,10 +254,10 @@ def selecionar_bin(update, context=None):
     texto = (
         "Detalhes da BIN: {}\n"
         "Bandeira: {}\n"
-        "Preco unitario: R$ {:.2f}\n"
+        "Preco unitario: R$ 1,00\n"
         "Estoque disponivel: {} unidades\n\n"
         "Deseja realizar a compra agora usando o seu saldo?"
-    ).format(bin_id, info.get('bandeira', 'Desconhecida'), info.get('valor', 2.0), qtd_disponivel)
+    ).format(bin_id, info.get('bandeira', 'Desconhecida'), qtd_disponivel)
 
     keyboard = [
         [InlineKeyboardButton("Confirmar e Comprar", callback_data="comprar_{}".format(bin_id))],
@@ -273,15 +278,16 @@ def efetuar_compra(update, context=None):
         query.answer("Estoque esgotado para esta BIN!", show_alert=True)
         return
 
-    preco = info.get("valor", 2.0)
+    preco = 1.0  # Preço fixo de 1 real
     saldo_atual = obter_saldo(user.id)
 
     if saldo_atual < preco:
         query.answer("Saldo insuficiente! Recarregue via PIX.", show_alert=True)
         return
 
-    SALDOS_USUARIOS[user.id] = saldo_atual - preco
-    salvar_saldos(SALDOS_USUARIOS)
+    # Atualiza saldo e salva imediatamente no arquivo
+    novo_saldo = saldo_atual - preco
+    atualizar_saldo(user.id, novo_saldo)
 
     item_comprado = info["estoque"].pop(0)
     salvar_estoque(dados_bins)
@@ -291,7 +297,7 @@ def efetuar_compra(update, context=None):
         "BIN: {} ({})\n"
         "Dado entregue:\n`{}`\n\n"
         "Novo Saldo: R$ {:.2f}"
-    ).format(bin_id, info.get('bandeira'), item_comprado, SALDOS_USUARIOS[user.id])
+    ).format(bin_id, info.get('bandeira'), item_comprado, novo_saldo)
 
     keyboard = [
         [InlineKeyboardButton("Comprar Mais", callback_data="ggs_disponiveis")],
@@ -388,8 +394,8 @@ def verificar_pix_callback(update, context=None):
                     valor = float(res_data.get("transaction_amount", 0.0))
 
                     saldo_atual = obter_saldo(user.id)
-                    SALDOS_USUARIOS[user.id] = saldo_atual + valor
-                    salvar_saldos(SALDOS_USUARIOS)
+                    novo_saldo = saldo_atual + valor
+                    atualizar_saldo(user.id, novo_saldo)  # Salva imediatamente no JSON
 
                     registrar_log_pix(user.id, user.first_name, valor, payment_id, status="aprovado")
 
@@ -398,7 +404,7 @@ def verificar_pix_callback(update, context=None):
                         "Valor creditado: R$ {:.2f}\n"
                         "Seu novo saldo e: R$ {:.2f}\n\n"
                         "Agora voce ja pode realizar suas compras!"
-                    ).format(valor, SALDOS_USUARIOS[user.id])
+                    ).format(valor, novo_saldo)
                     keyboard = [[InlineKeyboardButton("GGs Disponiveis", callback_data="ggs_disponiveis")]]
                     
                     query.answer("Pagamento Aprovado!")
@@ -464,8 +470,7 @@ def admpix(update, text_args=""):
 
         saldo_atual = obter_saldo(target_id)
         novo_saldo = saldo_atual + valor
-        SALDOS_USUARIOS[target_id] = novo_saldo
-        salvar_saldos(SALDOS_USUARIOS)
+        atualizar_saldo(target_id, novo_saldo)
 
         update.message.reply_text(
             "Saldo Adicionado com Sucesso!\n\n"
@@ -509,8 +514,7 @@ def addestoque(update, text_args=""):
     dados_bins = carregar_estoque()
 
     if bin_id not in dados_bins:
-        # Se a BIN não existir, cria uma nova automaticamente com bandeira "Desconhecida" e valor 2.0
-        dados_bins[bin_id] = {"bandeira": "Cartao", "valor": 2.0, "estoque": []}
+        dados_bins[bin_id] = {"bandeira": "Cartao", "valor": 1.0, "estoque": []}
 
     dados_bins[bin_id]["estoque"].append(novo_item)
     salvar_estoque(dados_bins)
@@ -584,6 +588,6 @@ if __name__ == '__main__':
     dp.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     dp.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Bot rodando com painel de estoque dinamico e servidor web ativo...")
+    print("Bot rodando com precos a R$ 1,00, persistencia em JSON e keep-alive ativo...")
     updater.start_polling()
     updater.idle()
