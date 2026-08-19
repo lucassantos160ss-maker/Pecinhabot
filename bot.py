@@ -434,7 +434,7 @@ def recarregar_callback(update, context=None):
 voltar_inicio = start
 
 # ----------------------------------------------------
-# Comando Admin
+# Comandos Admin
 # ----------------------------------------------------
 ADMINS = [7970384949, 7622528057]
 
@@ -487,6 +487,56 @@ def admpix(update, text_args=""):
     except ValueError:
         update.message.reply_text("Formato invalido! Certifique-se de que o ID e um numero e o valor e numerico.", parse_mode="Markdown")
 
+def addestoque(update, text_args=""):
+    user_id = update.effective_user.id
+
+    if user_id not in ADMINS:
+        update.message.reply_text("Voce não tem permissão para usar este comando.")
+        return
+
+    partes = text_args.split(' ', 1)
+    if len(partes) < 2:
+        update.message.reply_text(
+            "Uso correto:\n`/addestoque <BIN> <dado_ou_cartao>`\n\n"
+            "Exemplo:\n`/addestoque 374769 374769002216776|10/30|0000|LIVE`",
+            parse_mode="Markdown"
+        )
+        return
+
+    bin_id = partes[0].strip()
+    novo_item = partes[1].strip()
+
+    dados_bins = carregar_estoque()
+
+    if bin_id not in dados_bins:
+        # Se a BIN não existir, cria uma nova automaticamente com bandeira "Desconhecida" e valor 2.0
+        dados_bins[bin_id] = {"bandeira": "Cartao", "valor": 2.0, "estoque": []}
+
+    dados_bins[bin_id]["estoque"].append(novo_item)
+    salvar_estoque(dados_bins)
+
+    qtd_total = len(dados_bins[bin_id]["estoque"])
+    update.message.reply_text(
+        "Estoque Atualizado com Sucesso!\n\n"
+        "BIN: `{}`\n"
+        "Item adicionado:\n`{}`\n\n"
+        "Total agora nesta BIN: {} unidades".format(bin_id, novo_item, qtd_total),
+        parse_mode="Markdown"
+    )
+
+def verestoque(update):
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        return
+
+    dados_bins = carregar_estoque()
+    texto = "Resumo do Estoque Atual:\n\n"
+    for bin_id, info in dados_bins.items():
+        qtd = len(info.get("estoque", []))
+        texto += "- BIN `{}` ({}) : {} unidades\n".format(bin_id, info.get('bandeira'), qtd)
+
+    update.message.reply_text(texto, parse_mode="Markdown")
+
 # ----------------------------------------------------
 # Roteador de Mensagens de Texto
 # ----------------------------------------------------
@@ -506,6 +556,12 @@ def tratar_mensagem(update, context):
         partes = texto_msg.split(' ', 1)
         args = partes[1] if len(partes) > 1 else ""
         admpix(update, args)
+    elif texto_msg.startswith("/addestoque"):
+        partes = texto_msg.split(' ', 1)
+        args = partes[1] if len(partes) > 1 else ""
+        addestoque(update, args)
+    elif texto_msg.startswith("/verestoque"):
+        verestoque(update)
 
 # ----------------------------------------------------
 # Main (Inicializacao)
