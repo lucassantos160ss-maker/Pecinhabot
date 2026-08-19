@@ -496,35 +496,38 @@ def addestoque(update, text_args=""):
     user_id = update.effective_user.id
 
     if user_id not in ADMINS:
-        update.message.reply_text("Voce não tem permissão para usar este comando.")
+        update.message.reply_text("Você não tem permissão para usar este comando.")
         return
 
     partes = text_args.split(' ', 1)
     if len(partes) < 2:
         update.message.reply_text(
-            "Uso correto:\n`/addestoque <BIN> <dado_ou_cartao>`\n\n"
-            "Exemplo:\n`/addestoque 374769 374769002216776|10/30|0000|LIVE`",
+            "Uso correto:\n`/addestoque <BIN> <lista_de_cartoes>`\n\n"
+            "Dica: Você pode colar vários cartões, um por linha.",
             parse_mode="Markdown"
         )
         return
 
     bin_id = partes[0].strip()
-    novo_item = partes[1].strip()
+    # Pega o texto da lista, substitui vírgulas e separa por quebras de linha
+    lista_bruta = partes[1].replace(',', '\n')
+    cartoes = [c.strip() for c in lista_bruta.split('\n') if c.strip()]
 
     dados_bins = carregar_estoque()
 
     if bin_id not in dados_bins:
         dados_bins[bin_id] = {"bandeira": "Cartao", "valor": 1.0, "estoque": []}
 
-    dados_bins[bin_id]["estoque"].append(novo_item)
+    # Adiciona todos os cartões da lista de uma vez só
+    dados_bins[bin_id]["estoque"].extend(cartoes)
     salvar_estoque(dados_bins)
 
     qtd_total = len(dados_bins[bin_id]["estoque"])
     update.message.reply_text(
-        "Estoque Atualizado com Sucesso!\n\n"
+        "✅ **Estoque Atualizado com Sucesso!**\n\n"
         "BIN: `{}`\n"
-        "Item adicionado:\n`{}`\n\n"
-        "Total agora nesta BIN: {} unidades".format(bin_id, novo_item, qtd_total),
+        "Quantidade adicionada: {} cartões\n"
+        "Total agora nesta BIN: {} unidades".format(bin_id, len(cartoes), qtd_total),
         parse_mode="Markdown"
     )
 
@@ -588,6 +591,6 @@ if __name__ == '__main__':
     dp.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     dp.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Bot rodando com precos a R$ 1,00, persistencia em JSON e keep-alive ativo...")
+    print("Bot rodando com precos a R$ 1,00, persistencia em JSON e addestoque em massa...")
     updater.start_polling()
     updater.idle()
