@@ -499,17 +499,28 @@ def addestoque(update, text_args=""):
         update.message.reply_text("Voce nao tem permissao para usar este comando.")
         return
 
-    partes = text_args.split('\n', 1)
-    if len(partes) < 2:
+    text_args = text_args.strip()
+    if not text_args:
         update.message.reply_text(
-            "Uso correto:\n`/addestoque <BIN>\nitem1\nitem2\nitem3`\n\n"
-            "Exemplo:\n`/addestoque 406669\n4066699982452023|01/2034|159`",
+            "Uso correto:\n`/addestoque <BIN>\nitem1\nitem2\nitem3`",
             parse_mode="Markdown"
         )
         return
 
-    bin_id = partes[0].strip()
-    linhas_texto = partes[1].split('\n')
+    # Isola a BIN da primeira linha ou do primeiro espaço/quebra de linha
+    if '\n' in text_args:
+        primeira_linha, resto = text_args.split('\n', 1)
+        partes_linha = primeira_linha.split(' ', 1)
+        bin_id = partes_linha[0].strip()
+        
+        if len(partes_linha) > 1:
+            linhas_texto = [partes_linha[1]] + resto.split('\n')
+        else:
+            linhas_texto = resto.split('\n')
+    else:
+        partes = text_args.split(' ', 1)
+        bin_id = partes[0].strip()
+        linhas_texto = partes[1].split('\n') if len(partes) > 1 else []
 
     dados_bins = carregar_estoque()
 
