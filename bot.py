@@ -55,10 +55,10 @@ def carregar_estoque():
         except Exception:
             pass
     estoque_padrao = {
-        "374769": {"bandeira": "Amex", "valor": 8.0, "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE", "374769065454290|10/30|0000|LIVE"]},
-        "406669": {"bandeira": "Visa", "valor": 4.0, "estoque": ["4066699965118237|04/31|321|LIVE", "4066699960586354|04/31|654|LIVE"]},
-        "406655": {"bandeira": "Visa", "valor": 4.0, "estoque": ["406655000000001|01/30|987|Nome Exemplo 6"]},
-        "250061": {"bandeira": "Mastercard", "valor": 5.0, "estoque": ["250061000000001|03/31|111|Nome Exemplo 7", "250061000000002|04/32|222|Nome Exemplo 8"]}
+        "374769": {"bandeira": "Amex", "valor": 1.0, "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE"]},
+        "406669": {"bandeira": "Visa", "valor": 1.0, "estoque": ["4066699965118237|04/31|321|LIVE"]},
+        "406655": {"bandeira": "Visa", "valor": 1.0, "estoque": ["406655000000001|01/30|987|Nome Exemplo"]},
+        "250061": {"bandeira": "Mastercard", "valor": 1.0, "estoque": ["250061000000001|03/31|111|Nome Exemplo"]}
     }
     salvar_estoque(estoque_padrao)
     return estoque_padrao
@@ -130,11 +130,11 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
         logging.error("Erro silencioso ao gravar log do PIX: {}".format(e))
 
 # ----------------------------------------------------
-# Configuracoes do Bot
+# Configuracoes do Bot (Token Atualizado)
 # ----------------------------------------------------
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-TOKEN = '8918914171:AAFzDtXIQoW4ttAFy6iGmylYrSfM6Yg8CDM'
+TOKEN = '8918914171:AAGLUPjT-50tlwOI85i9WYzyjvom1hBeHgY'
 PIX_API_KEY = 'APP_USR-3303740326386787-081418-953681c933f125f4e5d8b34f8cf70ea8-3615204291'
 PIX_API_URL = 'https://api.mercadopago.com/v1/payments'
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
@@ -159,7 +159,7 @@ def start(update, context=None):
         "[\u200b]({})"
         "Ola {}, seja muito bem-vindo!\n\n"
         "Atencao: Este e um bot que vende Geradas!\n"
-        "Todos os nossos produtos estao saindo a partir de R$ 4,00.\n\n"
+        "Todos os nossos produtos estao saindo a partir de R$ 1,00.\n\n"
         "Precisa de ajuda? Chame o Suporte\n"
         "Informacoes Rapidas:\n"
         "- GGs com nomes e CPFs aleatorios.\n"
@@ -285,7 +285,6 @@ def efetuar_compra(update, context=None):
         query.answer("Saldo insuficiente! Recarregue via PIX.", show_alert=True)
         return
 
-    # Atualiza saldo e salva imediatamente no arquivo
     novo_saldo = saldo_atual - preco
     atualizar_saldo(user.id, novo_saldo)
 
@@ -395,7 +394,7 @@ def verificar_pix_callback(update, context=None):
 
                     saldo_atual = obter_saldo(user.id)
                     novo_saldo = saldo_atual + valor
-                    atualizar_saldo(user.id, novo_saldo)  # Salva imediatamente no JSON
+                    atualizar_saldo(user.id, novo_saldo)
 
                     registrar_log_pix(user.id, user.first_name, valor, payment_id, status="aprovado")
 
@@ -507,7 +506,6 @@ def addestoque(update, text_args=""):
         )
         return
 
-    # Isola a BIN da primeira linha ou do primeiro espaço/quebra de linha
     if '\n' in text_args:
         primeira_linha, resto = text_args.split('\n', 1)
         partes_linha = primeira_linha.split(' ', 1)
@@ -530,7 +528,7 @@ def addestoque(update, text_args=""):
     adicionados = 0
     for linha in linhas_texto:
         item = linha.strip()
-        if item:  # Ignora linhas em branco
+        if item:
             dados_bins[bin_id]["estoque"].append(item)
             adicionados += 1
 
@@ -587,7 +585,6 @@ def tratar_mensagem(update, context):
 # Main (Inicializacao)
 # ----------------------------------------------------
 if __name__ == '__main__':
-    # Inicia o servidor HTTP em background para o Render não derrubar o serviço
     t = Thread(target=iniciar_servidor_web)
     t.daemon = True
     t.start()
@@ -604,6 +601,6 @@ if __name__ == '__main__':
     dp.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     dp.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Bot rodando com precos a R$ 1,00, persistencia em JSON e keep-alive ativo...")
+    print("Bot rodando com o novo token, precos a R$ 1,00 e persistencia em JSON...")
     updater.start_polling()
     updater.idle()
