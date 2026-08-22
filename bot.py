@@ -58,7 +58,7 @@ def carregar_estoque():
         "374769": {"bandeira": "Amex", "valor": 8.0, "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE", "374769065454290|10/30|0000|LIVE"]},
         "406669": {"bandeira": "Visa", "valor": 4.0, "estoque": ["4066699965118237|04/31|321|LIVE", "4066699960586354|04/31|654|LIVE"]},
         "406655": {"bandeira": "Visa", "valor": 4.0, "estoque": ["406655000000001|01/30|987|Nome Exemplo 6"]},
-        "250061": {"bandeira": "Mastercard", "valor": 6.0, "estoque": ["250061000000001|03/31|111|Nome Exemplo 7", "250061000000002|04/32|222|Nome Exemplo 8"]}
+        "250061": {"bandeira": "Mastercard", "valor": 5.0, "estoque": ["250061000000001|03/31|111|Nome Exemplo 7", "250061000000002|04/32|222|Nome Exemplo 8"]}
     }
     salvar_estoque(estoque_padrao)
     return estoque_padrao
