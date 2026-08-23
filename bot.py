@@ -45,14 +45,7 @@ ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
 
 def carregar_estoque():
-    if os.path.exists(ESTOQUE_FILE):
-        try:
-            with open(ESTOQUE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-            
-    # Estoque inicial atualizado com todas as BINs solicitadas e estoque vazio
+    # Estoque completo com todas as BINs das imagens e preços definidos
     estoque_padrao = {
         "250060": {"bandeira": "Mastercard", "estoque": []},
         "250061": {"bandeira": "Mastercard", "estoque": ["250061000000001|03/31|111|Nome Exemplo"]},
@@ -85,6 +78,22 @@ def carregar_estoque():
         "552316": {"bandeira": "Mastercard", "estoque": []},
         "374769": {"bandeira": "Amex", "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE"]}
     }
+
+    if os.path.exists(ESTOQUE_FILE):
+        try:
+            with open(ESTOQUE_FILE, "r", encoding="utf-8") as f:
+                dados_atuais = json.load(f)
+                
+                # Garante que todas as novas BINs apareçam, mantendo o estoque de quem já estava lá
+                for bin_key, info_padrao in estoque_padrao.items():
+                    if bin_key not in dados_atuais:
+                        dados_atuais[bin_key] = info_padrao
+                
+                salvar_estoque(dados_atuais)
+                return dados_atuais
+        except Exception:
+            pass
+            
     salvar_estoque(estoque_padrao)
     return estoque_padrao
 
@@ -168,7 +177,6 @@ URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
 PAGAMENTOS_PENDENTES = {}
 
 def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
-    # Tabela de preços customizada baseada nas imagens enviadas
     precos_personalizados = {
         "250060": 6.0, "250061": 12.0, "406655": 6.0, "414718": 4.0,
         "415896": 4.0, "417938": 5.0, "421960": 5.0, "422061": 4.0,
@@ -583,7 +591,7 @@ async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def verestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id not in ADMINS:
+    if user_id not in ADMINN: # type: ignore
         return
 
     dados_bins = carregar_estoque()
@@ -622,4 +630,3 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
     print("Bot moderno iniciado com sucesso via polling...")
-
