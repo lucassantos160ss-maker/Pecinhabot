@@ -1,4 +1,4 @@
-import sys
+Import sys
 import types
 
 # Correção automática para o módulo imghdr removido nas versões recentes do Python
@@ -144,21 +144,12 @@ URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
 
 PAGAMENTOS_PENDENTES = {}
 
-# Função auxiliar para definir o preço e a bandeira/emoji de cada BIN
+# Função auxiliar para definir o preço e a bandeira de cada BIN
 def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
-    # Se a bandeira cadastrada for Amex ou se a BIN começar com 37 (padrão Amex), custa 10, senão 5
     if "amex" in bandeira_cadastrada.lower() or bin_id.startswith("37"):
-        return 10.0, "💳"  # Cartão/Amex
+        return 10.0
     else:
-        # Definir emojis visuais de bandeira de acordo com o tipo ou padrão
-        band_lower = bandeira_cadastrada.lower()
-        if "visa" in band_lower:
-            emoji = "🔹"
-        elif "master" in band_lower:
-            emoji = "🔶"
-        else:
-            emoji = "💠"
-        return 5.0, emoji
+        return 5.0
 
 # ----------------------------------------------------
 # Comandos Principais
@@ -235,12 +226,12 @@ def ggs_disponiveis(update, context=None):
         qtd = len(info.get("estoque", []))
         bandeira_nome = info.get('bandeira', 'Cartao')
         
-        # Pega o preço correto e o emoji de bandeira
-        valor, emoji = calcular_preco_e_bandeira(bin_id, bandeira_nome)
+        # Pega o preço correto sem emoji
+        valor = calcular_preco_e_bandeira(bin_id, bandeira_nome)
         str_valor = "{:.2f}".format(valor).replace('.', ',')
         
-        # Exemplo com emoji da bandeira na categoria
-        btn_txt = "{} {} ({}) | R$ {}".format(emoji, bin_id, qtd, str_valor)
+        # Botão limpo sem emojis de bandeira
+        btn_txt = "{} ({}) | R$ {}".format(bin_id, qtd, str_valor)
         linha.append(InlineKeyboardButton(btn_txt, callback_data="bin_{}".format(bin_id)))
         
         if len(linha) == 2:
@@ -275,15 +266,15 @@ def selecionar_bin(update, context=None):
     bandeira_nome = info.get('bandeira', 'Desconhecida')
     
     # Calcula o preço unitário correto
-    preco, emoji = calcular_preco_e_bandeira(bin_id, bandeira_nome)
+    preco = calcular_preco_e_bandeira(bin_id, bandeira_nome)
 
     texto = (
-        "{} Detalhes da BIN: {}\n"
+        "Detalhes da BIN: {}\n"
         "Bandeira: {}\n"
         "Preco unitario: R$ {:.2f}\n"
         "Estoque disponivel: {} unidades\n\n"
         "Deseja realizar a compra agora usando o seu saldo?"
-    ).format(emoji, bin_id, bandeira_nome, preco, qtd_disponivel)
+    ).format(bin_id, bandeira_nome, preco, qtd_disponivel)
 
     keyboard = [
         [InlineKeyboardButton("Confirmar e Comprar", callback_data="comprar_{}".format(bin_id))],
@@ -305,7 +296,7 @@ def efetuar_compra(update, context=None):
         return
 
     bandeira_nome = info.get('bandeira', 'Cartao')
-    preco, _ = calcular_preco_e_bandeira(bin_id, bandeira_nome)
+    preco = calcular_preco_e_bandeira(bin_id, bandeira_nome)
     
     saldo_atual = obter_saldo(user.id)
 
@@ -619,6 +610,3 @@ if __name__ == '__main__':
     dp.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     dp.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Bot rodando com preços atualizados (5R$ geral / 10R$ Amex) e bandeiras visíveis!")
-    updater.start_polling()
-    updater.idle()
