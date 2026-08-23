@@ -131,7 +131,7 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
 # ----------------------------------------------------
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-TOKEN = '8918914171:AAGLUPjT-50tlwOI85i9WYzyjvom1hBeHgY'
+TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 PIX_API_KEY = 'APP_USR-3303740326386787-081418-953681c933f125f4e5d8b34f8cf70ea8-3615204291'
 PIX_API_URL = 'https://api.mercadopago.com/v1/payments'
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
