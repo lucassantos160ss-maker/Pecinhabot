@@ -51,11 +51,39 @@ def carregar_estoque():
                 return json.load(f)
         except Exception:
             pass
+            
+    # Estoque inicial atualizado com todas as BINs solicitadas e estoque vazio
     estoque_padrao = {
-        "374769": {"bandeira": "Amex", "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE"]},
-        "406669": {"bandeira": "Visa", "estoque": ["4066699965118237|04/31|321|LIVE"]},
+        "250060": {"bandeira": "Mastercard", "estoque": []},
+        "250061": {"bandeira": "Mastercard", "estoque": ["250061000000001|03/31|111|Nome Exemplo"]},
         "406655": {"bandeira": "Visa", "estoque": ["406655000000001|01/30|987|Nome Exemplo"]},
-        "250061": {"bandeira": "Mastercard", "estoque": ["250061000000001|03/31|111|Nome Exemplo"]}
+        "406669": {"bandeira": "Visa", "estoque": ["4066699965118237|04/31|321|LIVE"]},
+        "414718": {"bandeira": "Visa", "estoque": []},
+        "415896": {"bandeira": "Visa", "estoque": []},
+        "417938": {"bandeira": "Visa", "estoque": []},
+        "421960": {"bandeira": "Visa", "estoque": []},
+        "422061": {"bandeira": "Visa", "estoque": []},
+        "425850": {"bandeira": "Visa", "estoque": []},
+        "449773": {"bandeira": "Visa", "estoque": []},
+        "459384": {"bandeira": "Visa", "estoque": []},
+        "464611": {"bandeira": "Visa", "estoque": []},
+        "466068": {"bandeira": "Visa", "estoque": []},
+        "466070": {"bandeira": "Visa", "estoque": []},
+        "478200": {"bandeira": "Visa", "estoque": []},
+        "485464": {"bandeira": "Visa", "estoque": []},
+        "489389": {"bandeira": "Visa", "estoque": []},
+        "498407": {"bandeira": "Visa", "estoque": []},
+        "498408": {"bandeira": "Visa", "estoque": []},
+        "515104": {"bandeira": "Mastercard", "estoque": []},
+        "516162": {"bandeira": "Mastercard", "estoque": []},
+        "520132": {"bandeira": "Mastercard", "estoque": []},
+        "536537": {"bandeira": "Mastercard", "estoque": []},
+        "537986": {"bandeira": "Mastercard", "estoque": []},
+        "540593": {"bandeira": "Mastercard", "estoque": []},
+        "547408": {"bandeira": "Mastercard", "estoque": []},
+        "552305": {"bandeira": "Mastercard", "estoque": []},
+        "552316": {"bandeira": "Mastercard", "estoque": []},
+        "374769": {"bandeira": "Amex", "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE"]}
     }
     salvar_estoque(estoque_padrao)
     return estoque_padrao
@@ -140,6 +168,20 @@ URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
 PAGAMENTOS_PENDENTES = {}
 
 def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
+    # Tabela de preços customizada baseada nas imagens enviadas
+    precos_personalizados = {
+        "250060": 6.0, "250061": 12.0, "406655": 6.0, "414718": 4.0,
+        "415896": 4.0, "417938": 5.0, "421960": 5.0, "422061": 4.0,
+        "425850": 7.0, "449773": 7.0, "459384": 5.0, "464611": 12.0,
+        "466068": 5.0, "466070": 5.0, "478200": 4.0, "485464": 6.0,
+        "489389": 6.0, "498407": 7.0, "498408": 7.0, "515104": 8.0,
+        "516162": 15.0, "520132": 8.0, "536537": 8.0, "537986": 6.0,
+        "540593": 8.0, "547408": 7.0, "552305": 12.0, "552316": 12.0
+    }
+    
+    if bin_id in precos_personalizados:
+        return precos_personalizados[bin_id]
+        
     if "amex" in bandeira_cadastrada.lower() or bin_id.startswith("37"):
         return 10.0
     else:
@@ -580,4 +622,4 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
     print("Bot moderno iniciado com sucesso via polling...")
-    application.run_polling()
+
