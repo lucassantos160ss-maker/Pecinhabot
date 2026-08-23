@@ -1,14 +1,5 @@
-Import sys
+import sys
 import types
-
-# Correção automática para o módulo imghdr removido nas versões recentes do Python
-m = types.ModuleType('imghdr')
-m.what = lambda *a, **kw: None
-sys.modules['imghdr'] = m
-
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
-
 import logging
 import os
 import urllib.request
@@ -18,12 +9,16 @@ import json
 from datetime import datetime
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+# Importações do Telegram (Versão Moderna v20+)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
-    Updater,
+    ApplicationBuilder,
+    CommandHandler,
     MessageHandler,
-    Filters,
     CallbackQueryHandler,
+    ContextTypes,
+    filters,
 )
 
 # ----------------------------------------------------
@@ -99,7 +94,7 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
     try:
         os.makedirs("logs", exist_ok=True)
         hoje = datetime.now().strftime("%Y-%m-%d")
-        caminho_arquivo = "logs/pix_logs_{}.json".format(hoje)
+        caminho_arquivo = f"logs/pix_logs_{hoje}.json"
         
         logs = []
         if os.path.exists(caminho_arquivo):
@@ -129,7 +124,7 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
         with open(caminho_arquivo, "w", encoding="utf-8") as f:
             json.dump(logs, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        logging.error("Erro silencioso ao gravar log do PIX: {}".format(e))
+        logging.error(f"Erro silencioso ao gravar log do PIX: {e}")
 
 # ----------------------------------------------------
 # Configurações do Bot
@@ -144,7 +139,6 @@ URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
 
 PAGAMENTOS_PENDENTES = {}
 
-# Função auxiliar para definir o preço e a bandeira de cada BIN
 def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
     if "amex" in bandeira_cadastrada.lower() or bin_id.startswith("37"):
         return 10.0
@@ -152,12 +146,12 @@ def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
         return 5.0
 
 # ----------------------------------------------------
-# Comandos Principais
+# Comandos Principais (Assíncronos - Padrão v20+)
 # ----------------------------------------------------
-def start(update, context=None):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query:
-        query.answer()
+        await query.answer()
         user = query.from_user
     else:
         user = update.effective_user
@@ -165,8 +159,8 @@ def start(update, context=None):
     saldo = obter_saldo(user.id)
 
     texto = (
-        "[\u200b]({})"
-        "Ola {}, seja muito bem-vindo!\n\n"
+        f"[\u200b]({URL_IMAGEM})"
+        f"Ola {user.first_name}, seja muito bem-vindo!\n\n"
         "Atencao: Este e um bot que vende Geradas!\n"
         "Todos os nossos produtos estao com novos precos!\n\n"
         "Precisa de ajuda? Chame o Suporte\n"
@@ -177,9 +171,9 @@ def start(update, context=None):
         "- GGs Direto do Chk.\n"
         "- Leia as Regras antes de comprar.\n\n"
         "Seu perfil:\n"
-        " - ID: `{}`\n"
-        " - Saldo: R$ {:.2f}"
-    ).format(URL_IMAGEM, user.first_name, user.id, saldo)
+        f" - ID: `{user.id}`\n"
+        f" - Saldo: R$ {saldo:.2f}"
+    )
 
     keyboard = [
         [InlineKeyboardButton("GGs Disponiveis", callback_data="ggs_disponiveis")],
@@ -188,13 +182,13 @@ def start(update, context=None):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if query:
-        query.edit_message_text(
+        await query.edit_message_text(
             text=texto,
             parse_mode="Markdown",
             reply_markup=reply_markup
         )
     else:
-        update.message.reply_text(
+        await update.message.reply_text(
             text=texto,
             parse_mode="Markdown",
             reply_markup=reply_markup
@@ -203,9 +197,9 @@ def start(update, context=None):
 # ----------------------------------------------------
 # Menu Dinamico de GGs
 # ----------------------------------------------------
-def ggs_disponiveis(update, context=None):
+async def ggs_disponiveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
 
     user = query.from_user
     saldo = obter_saldo(user.id)
@@ -215,9 +209,9 @@ def ggs_disponiveis(update, context=None):
         "GGs Disponiveis (Preco de Atacado)\n"
         "Escolha a BIN desejada para ver detalhes e confirmar a compra.\n\n"
         "Seu perfil:\n"
-        " - ID: `{}`\n"
-        " - Saldo: R$ {:.2f}\n"
-    ).format(user.id, saldo)
+        f" - ID: `{user.id}`\n"
+        f" - Saldo: R$ {saldo:.2f}\n"
+    )
 
     keyboard = []
     linha = []
@@ -226,13 +220,11 @@ def ggs_disponiveis(update, context=None):
         qtd = len(info.get("estoque", []))
         bandeira_nome = info.get('bandeira', 'Cartao')
         
-        # Pega o preço correto sem emoji
         valor = calcular_preco_e_bandeira(bin_id, bandeira_nome)
-        str_valor = "{:.2f}".format(valor).replace('.', ',')
+        str_valor = f"{valor:.2f}".replace('.', ',')
         
-        # Botão limpo sem emojis de bandeira
-        btn_txt = "{} ({}) | R$ {}".format(bin_id, qtd, str_valor)
-        linha.append(InlineKeyboardButton(btn_txt, callback_data="bin_{}".format(bin_id)))
+        btn_txt = f"{bin_id} ({qtd}) | R$ {str_valor}"
+        linha.append(InlineKeyboardButton(btn_txt, callback_data=f"bin_{bin_id}"))
         
         if len(linha) == 2:
             keyboard.append(linha)
@@ -244,46 +236,44 @@ def ggs_disponiveis(update, context=None):
     keyboard.append([InlineKeyboardButton("Pedir bin especifica", url=URL_SUPORTE)])
     keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar_inicio")])
 
-    query.edit_message_text(
+    await query.edit_message_text(
         text=texto,
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-def selecionar_bin(update, context=None):
+async def selecionar_bin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
 
     bin_id = query.data.split('_')[1]
     dados_bins = carregar_estoque()
     info = dados_bins.get(bin_id)
 
     if not info:
-        query.answer("BIN nao encontrada!", show_alert=True)
+        await query.answer("BIN nao encontrada!", show_alert=True)
         return
 
     qtd_disponivel = len(info.get("estoque", []))
     bandeira_nome = info.get('bandeira', 'Desconhecida')
-    
-    # Calcula o preço unitário correto
     preco = calcular_preco_e_bandeira(bin_id, bandeira_nome)
 
     texto = (
-        "Detalhes da BIN: {}\n"
-        "Bandeira: {}\n"
-        "Preco unitario: R$ {:.2f}\n"
-        "Estoque disponivel: {} unidades\n\n"
+        f"Detalhes da BIN: {bin_id}\n"
+        f"Bandeira: {bandeira_nome}\n"
+        f"Preco unitario: R$ {preco:.2f}\n"
+        f"Estoque disponivel: {qtd_disponivel} unidades\n\n"
         "Deseja realizar a compra agora usando o seu saldo?"
-    ).format(bin_id, bandeira_nome, preco, qtd_disponivel)
+    )
 
     keyboard = [
-        [InlineKeyboardButton("Confirmar e Comprar", callback_data="comprar_{}".format(bin_id))],
+        [InlineKeyboardButton("Confirmar e Comprar", callback_data=f"comprar_{bin_id}")],
         [InlineKeyboardButton("Voltar", callback_data="ggs_disponiveis")]
     ]
 
-    query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-def efetuar_compra(update, context=None):
+async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     bin_id = query.data.split('_')[1]
@@ -292,16 +282,15 @@ def efetuar_compra(update, context=None):
     info = dados_bins.get(bin_id)
 
     if not info or len(info.get("estoque", [])) == 0:
-        query.answer("Estoque esgotado para esta BIN!", show_alert=True)
+        await query.answer("Estoque esgotado para esta BIN!", show_alert=True)
         return
 
     bandeira_nome = info.get('bandeira', 'Cartao')
     preco = calcular_preco_e_bandeira(bin_id, bandeira_nome)
-    
     saldo_atual = obter_saldo(user.id)
 
     if saldo_atual < preco:
-        query.answer("Saldo insuficiente! Recarregue via PIX.", show_alert=True)
+        await query.answer("Saldo insuficiente! Recarregue via PIX.", show_alert=True)
         return
 
     novo_saldo = saldo_atual - preco
@@ -312,48 +301,50 @@ def efetuar_compra(update, context=None):
 
     texto_sucesso = (
         "Compra Aprovada com Sucesso!\n\n"
-        "BIN: {} ({})\n"
-        "Dado entregue:\n`{}`\n\n"
-        "Novo Saldo: R$ {:.2f}"
-    ).format(bin_id, bandeira_nome, item_comprado, novo_saldo)
+        f"BIN: {bin_id} ({bandeira_nome})\n"
+        "Dado entregue:\n"
+        f"`{item_comprado}`\n\n"
+        f"Novo Saldo: R$ {novo_saldo:.2f}"
+    )
 
     keyboard = [
         [InlineKeyboardButton("Comprar Mais", callback_data="ggs_disponiveis")],
         [InlineKeyboardButton("Menu Principal", callback_data="voltar_inicio")]
     ]
 
-    query.edit_message_text(text=texto_sucesso, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text=texto_sucesso, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ----------------------------------------------------
 # Sistema de Recarga PIX
 # ----------------------------------------------------
-def pix_command(update, text_args=""):
+async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    args = context.args
     
-    if not text_args:
-        update.message.reply_text("Por favor, informe o valor. Exemplo: /pix 10", parse_mode="Markdown")
+    if not args:
+        await update.message.reply_text("Por favor, informe o valor. Exemplo: /pix 10", parse_mode="Markdown")
         return
 
     try:
-        valor = float(text_args.replace(',', '.'))
+        valor = float(args[0].replace(',', '.'))
         if valor <= 0:
             raise ValueError
     except ValueError:
-        update.message.reply_text("Valor invalido. Digite um numero maior que zero. Ex: /pix 5", parse_mode="Markdown")
+        await update.message.reply_text("Valor invalido. Digite um numero maior que zero. Ex: /pix 5", parse_mode="Markdown")
         return
 
     headers = {
-        "Authorization": "Bearer {}".format(PIX_API_KEY),
+        "Authorization": f"Bearer {PIX_API_KEY}",
         "Content-Type": "application/json",
         "X-Idempotency-Key": str(uuid.uuid4())
     }
 
     payload = {
         "transaction_amount": valor,
-        "description": "Recarga de Saldo - Usuario {}".format(user.id),
+        "description": f"Recarga de Saldo - Usuario {user.id}",
         "payment_method_id": "pix",
         "payer": {
-            "email": "user_{}@bot.com".format(user.id),
+            "email": f"user_{user.id}@bot.com",
             "first_name": user.first_name or "Usuario",
             "last_name": "Telegram"
         }
@@ -374,34 +365,34 @@ def pix_command(update, text_args=""):
 
                 texto = (
                     "Cobranca PIX Gerada com Sucesso!\n\n"
-                    "Valor: R$ {:.2f}\n"
-                    "ID da Transacao: `{}`\n\n"
+                    f"Valor: R$ {valor:.2f}\n"
+                    f"ID da Transacao: `{payment_id}`\n\n"
                     "Copie o codigo abaixo e pague no seu aplicativo de banco:\n\n"
-                    "`{}`\n\n"
+                    f"`{qr_code}`\n\n"
                     "Apos pagar, clique no botao abaixo para aprovar seu saldo."
-                ).format(valor, payment_id, qr_code)
+                )
 
                 keyboard = [
-                    [InlineKeyboardButton("Verificar Pagamento", callback_data="verificar_pix_{}".format(payment_id))],
+                    [InlineKeyboardButton("Verificar Pagamento", callback_data=f"verificar_pix_{payment_id}")],
                     [InlineKeyboardButton("Voltar", callback_data="voltar_inicio")]
                 ]
 
-                update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+                await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
             else:
-                update.message.reply_text("Ocorreu um erro ao gerar a cobranca PIX no Mercado Pago.")
+                await update.message.reply_text("Ocorreu um erro ao gerar a cobranca PIX no Mercado Pago.")
     except Exception as e:
-        logging.error("Erro no comando /pix: {}".format(e))
-        update.message.reply_text("Erro de conexao com o servidor de pagamento.")
+        logging.error(f"Erro no comando /pix: {e}")
+        await update.message.reply_text("Erro de conexao com o servidor de pagamento.")
 
-def verificar_pix_callback(update, context=None):
+async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
 
     try:
         payment_id = query.data.replace("verificar_pix_", "").strip()
         user = query.from_user
 
-        headers = {"Authorization": "Bearer {}".format(PIX_API_KEY)}
-        req = urllib.request.Request("{}/{}".format(PIX_API_URL, payment_id), headers=headers, method='GET')
+        headers = {"Authorization": f"Bearer {PIX_API_KEY}"}
+        req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
         with urllib.request.urlopen(req) as response:
             if response.status == 200:
@@ -410,7 +401,6 @@ def verificar_pix_callback(update, context=None):
 
                 if status == "approved":
                     valor = float(res_data.get("transaction_amount", 0.0))
-
                     saldo_atual = obter_saldo(user.id)
                     novo_saldo = saldo_atual + valor
                     atualizar_saldo(user.id, novo_saldo)
@@ -419,29 +409,29 @@ def verificar_pix_callback(update, context=None):
 
                     texto = (
                         "Pagamento Confirmado!\n\n"
-                        "Valor creditado: R$ {:.2f}\n"
-                        "Seu novo saldo e: R$ {:.2f}\n\n"
+                        f"Valor creditado: R$ {valor:.2f}\n"
+                        f"Seu novo saldo e: R$ {novo_saldo:.2f}\n\n"
                         "Agora voce ja pode realizar suas compras!"
-                    ).format(valor, novo_saldo)
+                    )
                     keyboard = [[InlineKeyboardButton("GGs Disponiveis", callback_data="ggs_disponiveis")]]
                     
-                    query.answer("Pagamento Aprovado!")
-                    query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+                    await query.answer("Pagamento Aprovado!")
+                    await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
                 else:
-                    query.answer(
-                        "Pagamento ainda nao identificado (Status: {}). Aguarde alguns instantes e tente novamente.".format(status), 
+                    await query.answer(
+                        f"Pagamento ainda nao identificado (Status: {status}). Aguarde alguns instantes e tente novamente.", 
                         show_alert=True
                     )
             else:
-                query.answer("Nao foi possivel consultar o pagamento. Tente novamente.", show_alert=True)
+                await query.answer("Nao foi possivel consultar o pagamento. Tente novamente.", show_alert=True)
 
     except Exception as e:
-        logging.error("Erro ao verificar PIX: {}".format(e))
-        query.answer("Ocorreu um erro interno na consulta. Tente novamente.", show_alert=True)
+        logging.error(f"Erro ao verificar PIX: {e}")
+        await query.answer("Ocorreu um erro interno na consulta. Tente novamente.", show_alert=True)
 
-def recarregar_callback(update, context=None):
+async def recarregar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
 
     texto = (
         "Como recarregar seu saldo:\n\n"
@@ -453,85 +443,82 @@ def recarregar_callback(update, context=None):
         "O QR Code e o Copia e Cola serao gerados automaticamente!"
     )
     keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar_inicio")]]
-    query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-voltar_inicio = start
+async def voltar_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start(update, context)
 
 # ----------------------------------------------------
 # Comandos Admin
 # ----------------------------------------------------
 ADMINS = [7970384949, 7622528057]
 
-def admpix(update, text_args=""):
+async def admpix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id not in ADMINS:
-        update.message.reply_text("Voce nao tem permissao para usar este comando.")
+        await update.message.reply_text("Voce nao tem permissao para usar este comando.")
         return
 
-    partes = text_args.split()
-    if len(partes) < 2:
-        update.message.reply_text(
-            "Uso correto: /admpix <ID_DO_USUARIO> <VALOR>\n\n"
-            "Exemplo: /admpix 123456789 50",
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Uso correto: /admpix <ID_DO_USUARIO> <VALOR>\n\nExemplo: /admpix 123456789 50",
             parse_mode="Markdown"
         )
         return
 
     try:
-        target_id = int(partes[0])
-        valor = float(partes[1].replace(',', '.'))
+        target_id = int(args[0])
+        valor = float(args[1].replace(',', '.'))
 
         if valor <= 0:
-            update.message.reply_text("O valor deve ser maior que zero.")
+            await update.message.reply_text("O valor deve ser maior que zero.")
             return
 
         saldo_atual = obter_saldo(target_id)
         novo_saldo = saldo_atual + valor
         atualizar_saldo(target_id, novo_saldo)
 
-        update.message.reply_text(
+        await update.message.reply_text(
             "Saldo Adicionado com Sucesso!\n\n"
-            "Usuario Receptante (ID): `{}`\n"
-            "Valor Adicionado: R$ {:.2f}\n"
-            "Novo Saldo do Usuario: R$ {:.2f}".format(target_id, valor, novo_saldo),
+            f"Usuario Receptante (ID): `{target_id}`\n"
+            f"Valor Adicionado: R$ {valor:.2f}\n"
+            f"Novo Saldo do Usuario: R$ {novo_saldo:.2f}",
             parse_mode="Markdown"
         )
 
         try:
-            updater.bot.send_message(
+            await context.bot.send_message(
                 chat_id=target_id,
-                text="Voce recebeu uma recarga de saldo!\n\nValor: R$ {:.2f}\nSeu Novo Saldo: R$ {:.2f}".format(valor, novo_saldo),
+                text=f"Voce recebeu uma recarga de saldo!\n\nValor: R$ {valor:.2f}\nSeu Novo Saldo: R$ {novo_saldo:.2f}",
                 parse_mode="Markdown"
             )
         except Exception:
             pass
 
     except ValueError:
-        update.message.reply_text("Formato invalido! Certifique-se de que o ID e um numero e o valor e numerico.", parse_mode="Markdown")
+        await update.message.reply_text("Formato invalido! Certifique-se de que o ID e um numero e o valor e numerico.", parse_mode="Markdown")
 
-def addestoque(update, text_args=""):
+async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id not in ADMINS:
-        update.message.reply_text("Voce nao tem permissao para usar este comando.")
+        await update.message.reply_text("Voce nao tem permissao para usar este comando.")
         return
 
-    text_args = text_args.strip()
-    if not text_args:
-        update.message.reply_text(
+    texto_completo = update.message.text[len("/addestoque"):].strip()
+    if not texto_completo:
+        await update.message.reply_text(
             "Uso correto:\n`/addestoque <BIN> <Bandeira>\nitem1\nitem2`",
             parse_mode="Markdown"
         )
         return
 
-    linhas = text_args.split('\n')
+    linhas = texto_completo.split('\n')
     primeira_linha = linhas[0].strip().split(' ', 1)
     bin_id = primeira_linha[0].strip()
     bandeira_informada = primeira_linha[1].strip() if len(primeira_linha) > 1 else "Cartao"
 
     itens_novos = [l.strip() for l in linhas[1:] if l.strip()]
-
     dados_bins = carregar_estoque()
 
     if bin_id not in dados_bins:
@@ -543,16 +530,16 @@ def addestoque(update, text_args=""):
     salvar_estoque(dados_bins)
 
     qtd_total = len(dados_bins[bin_id]["estoque"])
-    update.message.reply_text(
+    await update.message.reply_text(
         "Estoque Atualizado com Sucesso!\n\n"
-        "BIN: `{}`\n"
-        "Bandeira: {}\n"
-        "Itens adicionados: {}\n"
-        "Total agora nesta BIN: {} unidades".format(bin_id, bandeira_informada, len(itens_novos), qtd_total),
+        f"BIN: `{bin_id}`\n"
+        f"Bandeira: {bandeira_informada}\n"
+        f"Itens adicionados: {len(itens_novos)}\n"
+        f"Total agora nesta BIN: {qtd_total} unidades",
         parse_mode="Markdown"
     )
 
-def verestoque(update):
+async def verestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
         return
@@ -561,51 +548,36 @@ def verestoque(update):
     texto = "Resumo do Estoque Atual:\n\n"
     for bin_id, info in dados_bins.items():
         qtd = len(info.get("estoque", []))
-        texto += "- BIN `{}` ({}) : {} unidades\n".format(bin_id, info.get('bandeira'), qtd)
+        texto += f"- BIN `{bin_id}` ({info.get('bandeira')}): {qtd} unidades\n"
 
-    update.message.reply_text(texto, parse_mode="Markdown")
-
-# ----------------------------------------------------
-# Roteador de Mensagens de Texto
-# ----------------------------------------------------
-def tratar_mensagem(update, context):
-    if not update.message or not update.message.text:
-        return
-    
-    texto_msg = update.message.text.strip()
-    
-    if texto_msg.startswith("/start"):
-        start(update)
-    elif texto_msg.startswith("/pix"):
-        partes = texto_msg.split(' ', 1)
-        args = partes[1] if len(partes) > 1 else ""
-        pix_command(update, args)
-    elif texto_msg.startswith("/admpix"):
-        partes = texto_msg.split(' ', 1)
-        args = partes[1] if len(partes) > 1 else ""
-        admpix(update, args)
-    elif texto_msg.startswith("/addestoque"):
-        args = update.message.text[len("/addestoque"):].strip()
-        addestoque(update, args)
-    elif texto_msg.startswith("/verestoque"):
-        verestoque(update)
+    await update.message.reply_text(texto, parse_mode="Markdown")
 
 # ----------------------------------------------------
-# Main (Inicializacao)
+# Main (Inicialização Padrão v20+ com ApplicationBuilder)
 # ----------------------------------------------------
 if __name__ == '__main__':
+    # Inicia o servidor web do Render em segundo plano
     t = Thread(target=iniciar_servidor_web)
     t.daemon = True
     t.start()
 
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    # Configura a aplicação moderna
+    application = ApplicationBuilder().token(TOKEN).build()
 
-    dp.add_handler(MessageHandler(Filters.text, tratar_mensagem))
+    # Adicionando os manipuladores de comandos
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("pix", pix_command))
+    application.add_handler(CommandHandler("admpix", admpix))
+    application.add_handler(CommandHandler("addestoque", addestoque))
+    application.add_handler(CommandHandler("verestoque", verestoque))
 
-    dp.add_handler(CallbackQueryHandler(voltar_inicio, pattern="^voltar_inicio$"))
-    dp.add_handler(CallbackQueryHandler(ggs_disponiveis, pattern="^ggs_disponiveis$"))
-    dp.add_handler(CallbackQueryHandler(selecionar_bin, pattern="^bin_"))
-    dp.add_handler(CallbackQueryHandler(efetuar_compra, pattern="^comprar_"))
-    dp.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
-    dp.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
+    # Adicionando os manipuladores de botões (Callbacks)
+    application.add_handler(CallbackQueryHandler(voltar_inicio, pattern="^voltar_inicio$"))
+    application.add_handler(CallbackQueryHandler(ggs_disponiveis, pattern="^ggs_disponiveis$"))
+    application.add_handler(CallbackQueryHandler(selecionar_bin, pattern="^bin_"))
+    application.add_handler(CallbackQueryHandler(efetuar_compra, pattern="^comprar_"))
+    application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
+    application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
+
+    print("Bot moderno iniciado com sucesso via polling...")
+    application.run_polling()
