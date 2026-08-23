@@ -1,5 +1,3 @@
-import sys
-import types
 import logging
 import os
 import urllib.request
@@ -10,15 +8,12 @@ from datetime import datetime
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Importações do Telegram (Versão Moderna v20+)
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
-    filters,
 )
 
 # ----------------------------------------------------
@@ -34,18 +29,15 @@ class DummyHandler(BaseHTTPRequestHandler):
 def iniciar_servidor_web():
     porta = int(os.environ.get("PORT", 10000))
     servidor = HTTPServer(("0.0.0.0", porta), DummyHandler)
-    servidor_serve = getattr(servidor, "serve_forever", None)
-    if servidor_serve:
-        servidor_serve()
+    servidor.serve_forever()
 
 # ----------------------------------------------------
-# Gestão de Estoque e Saldo via JSON (Persistência Real)
+# Gestão de Estoque e Saldo via JSON
 # ----------------------------------------------------
 ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
 
 def carregar_estoque():
-    # Estoque completo com todas as BINs das imagens e preços definidos
     estoque_padrao = {
         "250060": {"bandeira": "Mastercard", "estoque": []},
         "250061": {"bandeira": "Mastercard", "estoque": ["250061000000001|03/31|111|Nome Exemplo"]},
@@ -83,12 +75,9 @@ def carregar_estoque():
         try:
             with open(ESTOQUE_FILE, "r", encoding="utf-8") as f:
                 dados_atuais = json.load(f)
-                
-                # Garante que todas as novas BINs apareçam, mantendo o estoque de quem já estava lá
                 for bin_key, info_padrao in estoque_padrao.items():
                     if bin_key not in dados_atuais:
                         dados_atuais[bin_key] = info_padrao
-                
                 salvar_estoque(dados_atuais)
                 return dados_atuais
         except Exception:
@@ -196,7 +185,7 @@ def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
         return 5.0
 
 # ----------------------------------------------------
-# Comandos Principais (Assíncronos - Padrão v20+)
+# Comandos Principais
 # ----------------------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -232,21 +221,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if query:
-        await query.edit_message_text(
-            text=texto,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
+        await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=reply_markup)
     else:
-        await update.message.reply_text(
-            text=texto,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
+        await update.message.reply_text(text=texto, parse_mode="Markdown", reply_markup=reply_markup)
 
-# ----------------------------------------------------
-# Menu Dinamico de GGs
-# ----------------------------------------------------
 async def ggs_disponiveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -286,11 +264,7 @@ async def ggs_disponiveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("Pedir bin especifica", url=URL_SUPORTE)])
     keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar_inicio")])
 
-    await query.edit_message_text(
-        text=texto,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def selecionar_bin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -364,9 +338,6 @@ async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text=texto_sucesso, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ----------------------------------------------------
-# Sistema de Recarga PIX
-# ----------------------------------------------------
 async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     args = context.args
@@ -498,69 +469,40 @@ async def recarregar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def voltar_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# ----------------------------------------------------
 # Comandos Admin
-# ----------------------------------------------------
 ADMINS = [7970384949, 7622528057]
 
 async def admpix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
-        await update.message.reply_text("Voce nao tem permissao para usar este comando.")
         return
 
     args = context.args
     if len(args) < 2:
-        await update.message.reply_text(
-            "Uso correto: /admpix <ID_DO_USUARIO> <VALOR>\n\nExemplo: /admpix 123456789 50",
-            parse_mode="Markdown"
-        )
         return
 
     try:
         target_id = int(args[0])
         valor = float(args[1].replace(',', '.'))
-
-        if valor <= 0:
-            await update.message.reply_text("O valor deve ser maior que zero.")
-            return
-
         saldo_atual = obter_saldo(target_id)
         novo_saldo = saldo_atual + valor
         atualizar_saldo(target_id, novo_saldo)
 
-        await update.message.reply_text(
-            "Saldo Adicionado com Sucesso!\n\n"
-            f"Usuario Receptante (ID): `{target_id}`\n"
-            f"Valor Adicionado: R$ {valor:.2f}\n"
-            f"Novo Saldo do Usuario: R$ {novo_saldo:.2f}",
-            parse_mode="Markdown"
-        )
-
+        await update.message.reply_text(f"Sucesso! Novo saldo de {target_id}: R$ {novo_saldo:.2f}")
         try:
-            await context.bot.send_message(
-                chat_id=target_id,
-                text=f"Voce recebeu uma recarga de saldo!\n\nValor: R$ {valor:.2f}\nSeu Novo Saldo: R$ {novo_saldo:.2f}",
-                parse_mode="Markdown"
-            )
+            await context.bot.send_message(chat_id=target_id, text=f"Voce recebeu R$ {valor:.2f} de saldo!")
         except Exception:
             pass
-
     except ValueError:
-        await update.message.reply_text("Formato invalido! Certifique-se de que o ID e um numero e o valor e numerico.", parse_mode="Markdown")
+        pass
 
 async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
-        await update.message.reply_text("Voce nao tem permissao para usar este comando.")
         return
 
     texto_completo = update.message.text[len("/addestoque"):].strip()
     if not texto_completo:
-        await update.message.reply_text(
-            "Uso correto:\n`/addestoque <BIN> <Bandeira>\nitem1\nitem2`",
-            parse_mode="Markdown"
-        )
         return
 
     linhas = texto_completo.split('\n')
@@ -578,50 +520,27 @@ async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     dados_bins[bin_id]["estoque"].extend(itens_novos)
     salvar_estoque(dados_bins)
-
-    qtd_total = len(dados_bins[bin_id]["estoque"])
-    await update.message.reply_text(
-        "Estoque Atualizado com Sucesso!\n\n"
-        f"BIN: `{bin_id}`\n"
-        f"Bandeira: {bandeira_informada}\n"
-        f"Itens adicionados: {len(itens_novos)}\n"
-        f"Total agora nesta BIN: {qtd_total} unidades",
-        parse_mode="Markdown"
-    )
-
-async def verestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMINN: # type: ignore
-        return
-
-    dados_bins = carregar_estoque()
-    texto = "Resumo do Estoque Atual:\n\n"
-    for bin_id, info in dados_bins.items():
-        qtd = len(info.get("estoque", []))
-        texto += f"- BIN `{bin_id}` ({info.get('bandeira')}): {qtd} unidades\n"
-
-    await update.message.reply_text(texto, parse_mode="Markdown")
+    await update.message.reply_text(f"Adicionados {len(itens_novos)} itens na BIN {bin_id}.")
 
 # ----------------------------------------------------
-# Main (Inicialização Padrão v20+ com ApplicationBuilder)
+# Inicialização Oficial do Bot
 # ----------------------------------------------------
 if __name__ == '__main__':
-    # Inicia o servidor web do Render em segundo plano
+    # Sobe o servidor web em segundo plano para o Render não derrubar a aplicação
     t = Thread(target=iniciar_servidor_web)
     t.daemon = True
     t.start()
 
-    # Configura a aplicação moderna
+    # Cria a aplicação do Telegram usando o método oficial de construção nativa
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Adicionando os manipuladores de comandos
+    # Registros de Comandos
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("pix", pix_command))
     application.add_handler(CommandHandler("admpix", admpix))
     application.add_handler(CommandHandler("addestoque", addestoque))
-    application.add_handler(CommandHandler("verestoque", verestoque))
 
-    # Adicionando os manipuladores de botões (Callbacks)
+    # Registros de Botões (Callbacks)
     application.add_handler(CallbackQueryHandler(voltar_inicio, pattern="^voltar_inicio$"))
     application.add_handler(CallbackQueryHandler(ggs_disponiveis, pattern="^ggs_disponiveis$"))
     application.add_handler(CallbackQueryHandler(selecionar_bin, pattern="^bin_"))
@@ -629,4 +548,5 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Bot moderno iniciado com sucesso via polling...")
+    print("Iniciando bot com polling oficial...")
+    application.run_polling()
