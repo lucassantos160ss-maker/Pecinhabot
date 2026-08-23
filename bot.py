@@ -39,7 +39,9 @@ class DummyHandler(BaseHTTPRequestHandler):
 def iniciar_servidor_web():
     porta = int(os.environ.get("PORT", 10000))
     servidor = HTTPServer(("0.0.0.0", porta), DummyHandler)
-    servidor.serve_forever()
+    servidor_serve = getattr(servidor, "serve_forever", None)
+    if servidor_serve:
+        servidor_serve()
 
 # ----------------------------------------------------
 # Gestão de Estoque e Saldo via JSON (Persistência Real)
@@ -55,10 +57,10 @@ def carregar_estoque():
         except Exception:
             pass
     estoque_padrao = {
-        "374769": {"bandeira": "Amex", "valor": 1.0, "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE"]},
-        "406669": {"bandeira": "Visa", "valor": 1.0, "estoque": ["4066699965118237|04/31|321|LIVE"]},
-        "406655": {"bandeira": "Visa", "valor": 1.0, "estoque": ["406655000000001|01/30|987|Nome Exemplo"]},
-        "250061": {"bandeira": "Mastercard", "valor": 1.0, "estoque": ["250061000000001|03/31|111|Nome Exemplo"]}
+        "374769": {"bandeira": "Amex", "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE"]},
+        "406669": {"bandeira": "Visa", "estoque": ["4066699965118237|04/31|321|LIVE"]},
+        "406655": {"bandeira": "Visa", "estoque": ["406655000000001|01/30|987|Nome Exemplo"]},
+        "250061": {"bandeira": "Mastercard", "estoque": ["250061000000001|03/31|111|Nome Exemplo"]}
     }
     salvar_estoque(estoque_padrao)
     return estoque_padrao
@@ -130,7 +132,7 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
         logging.error("Erro silencioso ao gravar log do PIX: {}".format(e))
 
 # ----------------------------------------------------
-# Configuracoes do Bot (Token Atualizado)
+# Configurações do Bot
 # ----------------------------------------------------
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -141,6 +143,22 @@ URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
 
 PAGAMENTOS_PENDENTES = {}
+
+# Função auxiliar para definir o preço e a bandeira/emoji de cada BIN
+def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
+    # Se a bandeira cadastrada for Amex ou se a BIN começar com 37 (padrão Amex), custa 10, senão 5
+    if "amex" in bandeira_cadastrada.lower() or bin_id.startswith("37"):
+        return 10.0, "💳"  # Cartão/Amex
+    else:
+        # Definir emojis visuais de bandeira de acordo com o tipo ou padrão
+        band_lower = bandeira_cadastrada.lower()
+        if "visa" in band_lower:
+            emoji = "🔹"
+        elif "master" in band_lower:
+            emoji = "🔶"
+        else:
+            emoji = "💠"
+        return 5.0, emoji
 
 # ----------------------------------------------------
 # Comandos Principais
@@ -159,7 +177,7 @@ def start(update, context=None):
         "[\u200b]({})"
         "Ola {}, seja muito bem-vindo!\n\n"
         "Atencao: Este e um bot que vende Geradas!\n"
-        "Todos os nossos produtos estao saindo a partir de R$ 1,00.\n\n"
+        "Todos os nossos produtos estao com novos precos!\n\n"
         "Precisa de ajuda? Chame o Suporte\n"
         "Informacoes Rapidas:\n"
         "- GGs com nomes e CPFs aleatorios.\n"
@@ -215,10 +233,14 @@ def ggs_disponiveis(update, context=None):
     
     for bin_id, info in dados_bins.items():
         qtd = len(info.get("estoque", []))
-        valor = 1.0  # Todos por 1 real
+        bandeira_nome = info.get('bandeira', 'Cartao')
+        
+        # Pega o preço correto e o emoji de bandeira
+        valor, emoji = calcular_preco_e_bandeira(bin_id, bandeira_nome)
         str_valor = "{:.2f}".format(valor).replace('.', ',')
         
-        btn_txt = "{} ({}) | R$ {}".format(bin_id, qtd, str_valor)
+        # Exemplo com emoji da bandeira na categoria
+        btn_txt = "{} {} ({}) | R$ {}".format(emoji, bin_id, qtd, str_valor)
         linha.append(InlineKeyboardButton(btn_txt, callback_data="bin_{}".format(bin_id)))
         
         if len(linha) == 2:
@@ -250,14 +272,18 @@ def selecionar_bin(update, context=None):
         return
 
     qtd_disponivel = len(info.get("estoque", []))
+    bandeira_nome = info.get('bandeira', 'Desconhecida')
+    
+    # Calcula o preço unitário correto
+    preco, emoji = calcular_preco_e_bandeira(bin_id, bandeira_nome)
 
     texto = (
-        "Detalhes da BIN: {}\n"
+        "{} Detalhes da BIN: {}\n"
         "Bandeira: {}\n"
-        "Preco unitario: R$ 1,00\n"
+        "Preco unitario: R$ {:.2f}\n"
         "Estoque disponivel: {} unidades\n\n"
         "Deseja realizar a compra agora usando o seu saldo?"
-    ).format(bin_id, info.get('bandeira', 'Desconhecida'), qtd_disponivel)
+    ).format(emoji, bin_id, bandeira_nome, preco, qtd_disponivel)
 
     keyboard = [
         [InlineKeyboardButton("Confirmar e Comprar", callback_data="comprar_{}".format(bin_id))],
@@ -278,7 +304,9 @@ def efetuar_compra(update, context=None):
         query.answer("Estoque esgotado para esta BIN!", show_alert=True)
         return
 
-    preco = 1.0  # Preço fixo de 1 real
+    bandeira_nome = info.get('bandeira', 'Cartao')
+    preco, _ = calcular_preco_e_bandeira(bin_id, bandeira_nome)
+    
     saldo_atual = obter_saldo(user.id)
 
     if saldo_atual < preco:
@@ -296,7 +324,7 @@ def efetuar_compra(update, context=None):
         "BIN: {} ({})\n"
         "Dado entregue:\n`{}`\n\n"
         "Novo Saldo: R$ {:.2f}"
-    ).format(bin_id, info.get('bandeira'), item_comprado, novo_saldo)
+    ).format(bin_id, bandeira_nome, item_comprado, novo_saldo)
 
     keyboard = [
         [InlineKeyboardButton("Comprar Mais", callback_data="ggs_disponiveis")],
@@ -428,7 +456,7 @@ def recarregar_callback(update, context=None):
         "Como recarregar seu saldo:\n\n"
         "Envie o comando /pix seguido do valor que deseja recarregar diretamente no chat.\n\n"
         "Exemplos:\n"
-        "- /pix 2 - Recarrega R$ 2,00\n"
+        "- /pix 5 - Recarrega R$ 5,00\n"
         "- /pix 10 - Recarrega R$ 10,00\n"
         "- /pix 50 - Recarrega R$ 50,00\n\n"
         "O QR Code e o Copia e Cola serao gerados automaticamente!"
@@ -501,45 +529,35 @@ def addestoque(update, text_args=""):
     text_args = text_args.strip()
     if not text_args:
         update.message.reply_text(
-            "Uso correto:\n`/addestoque <BIN>\nitem1\nitem2\nitem3`",
+            "Uso correto:\n`/addestoque <BIN> <Bandeira>\nitem1\nitem2`",
             parse_mode="Markdown"
         )
         return
 
-    if '\n' in text_args:
-        primeira_linha, resto = text_args.split('\n', 1)
-        partes_linha = primeira_linha.split(' ', 1)
-        bin_id = partes_linha[0].strip()
-        
-        if len(partes_linha) > 1:
-            linhas_texto = [partes_linha[1]] + resto.split('\n')
-        else:
-            linhas_texto = resto.split('\n')
-    else:
-        partes = text_args.split(' ', 1)
-        bin_id = partes[0].strip()
-        linhas_texto = partes[1].split('\n') if len(partes) > 1 else []
+    linhas = text_args.split('\n')
+    primeira_linha = linhas[0].strip().split(' ', 1)
+    bin_id = primeira_linha[0].strip()
+    bandeira_informada = primeira_linha[1].strip() if len(primeira_linha) > 1 else "Cartao"
+
+    itens_novos = [l.strip() for l in linhas[1:] if l.strip()]
 
     dados_bins = carregar_estoque()
 
     if bin_id not in dados_bins:
-        dados_bins[bin_id] = {"bandeira": "Cartao", "valor": 1.0, "estoque": []}
+        dados_bins[bin_id] = {"bandeira": bandeira_informada, "estoque": []}
+    else:
+        dados_bins[bin_id]["bandeira"] = bandeira_informada
 
-    adicionados = 0
-    for linha in linhas_texto:
-        item = linha.strip()
-        if item:
-            dados_bins[bin_id]["estoque"].append(item)
-            adicionados += 1
-
+    dados_bins[bin_id]["estoque"].extend(itens_novos)
     salvar_estoque(dados_bins)
 
     qtd_total = len(dados_bins[bin_id]["estoque"])
     update.message.reply_text(
         "Estoque Atualizado com Sucesso!\n\n"
         "BIN: `{}`\n"
-        "Itens adicionados em lote: {}\n\n"
-        "Total agora nesta BIN: {} unidades".format(bin_id, adicionados, qtd_total),
+        "Bandeira: {}\n"
+        "Itens adicionados: {}\n"
+        "Total agora nesta BIN: {} unidades".format(bin_id, bandeira_informada, len(itens_novos), qtd_total),
         parse_mode="Markdown"
     )
 
@@ -601,6 +619,6 @@ if __name__ == '__main__':
     dp.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     dp.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Bot rodando com o novo token, precos a R$ 1,00 e persistencia em JSON...")
+    print("Bot rodando com preços atualizados (5R$ geral / 10R$ Amex) e bandeiras visíveis!")
     updater.start_polling()
     updater.idle()
