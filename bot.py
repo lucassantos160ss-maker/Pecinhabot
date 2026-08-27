@@ -33,63 +33,33 @@ def iniciar_servidor_web():
     servidor.serve_forever()
 
 # ----------------------------------------------------
-# Gestão de Estoque e Saldo via JSON
+# Gestão de Estoque Embutida (Segura contra perda de arquivos)
 # ----------------------------------------------------
-ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
 
 def carregar_estoque():
-    estoque_padrao = {
-        "250060": {"bandeira": "Mastercard", "estoque": []},
-        "250061": {"bandeira": "Mastercard", "estoque": ["250061000000001|03/31|111|Nome Exemplo"]},
-        "406655": {"bandeira": "Visa", "estoque": ["406655000000001|01/30|987|Nome Exemplo"]},
-        "406669": {"bandeira": "Visa", "estoque": ["4066699965118237|04/31|321|LIVE"]},
-        "414718": {"bandeira": "Visa", "estoque": []},
-        "415896": {"bandeira": "Visa", "estoque": []},
-        "417938": {"bandeira": "Visa", "estoque": []},
-        "421960": {"bandeira": "Visa", "estoque": []},
-        "422061": {"bandeira": "Visa", "estoque": []},
-        "425850": {"bandeira": "Visa", "estoque": []},
-        "449773": {"bandeira": "Visa", "estoque": []},
-        "459384": {"bandeira": "Visa", "estoque": []},
-        "464611": {"bandeira": "Visa", "estoque": []},
-        "466068": {"bandeira": "Visa", "estoque": []},
-        "466070": {"bandeira": "Visa", "estoque": []},
-        "478200": {"bandeira": "Visa", "estoque": []},
-        "485464": {"bandeira": "Visa", "estoque": []},
-        "489389": {"bandeira": "Visa", "estoque": []},
-        "498407": {"bandeira": "Visa", "estoque": []},
-        "498408": {"bandeira": "Visa", "estoque": []},
-        "515104": {"bandeira": "Mastercard", "estoque": []},
-        "516162": {"bandeira": "Mastercard", "estoque": []},
-        "520132": {"bandeira": "Mastercard", "estoque": []},
-        "536537": {"bandeira": "Mastercard", "estoque": []},
-        "537986": {"bandeira": "Mastercard", "estoque": []},
-        "540593": {"bandeira": "Mastercard", "estoque": []},
-        "547408": {"bandeira": "Mastercard", "estoque": []},
-        "552305": {"bandeira": "Mastercard", "estoque": []},
-        "552316": {"bandeira": "Mastercard", "estoque": []},
-        "374769": {"bandeira": "Amex", "estoque": ["374769002216776|10/30|0000|LIVE", "374769012120570|06/33|5457|LIVE"]}
+    # COLE OS SEUS 800 CARTÕES AQUI DENTRO DO ESTOQUE PADRÃO
+    estoque_dados = {
+        "250060": {
+            "bandeira": "Mastercard", 
+            "estoque": [
+                # Exemplo: "NUMERO|VALIDADE|CVV|NOME"
+                "250060000000001|03/31|111|Nome Exemplo"
+            ]
+        },
+        "374769": {
+            "bandeira": "Amex", 
+            "estoque": [
+                "374769002216776|10/30|0000|LIVE", 
+                "374769012120570|06/33|5457|LIVE"
+            ]
+        }
     }
-
-    if os.path.exists(ESTOQUE_FILE):
-        try:
-            with open(ESTOQUE_FILE, "r", encoding="utf-8") as f:
-                dados_atuais = json.load(f)
-                for bin_key, info_padrao in estoque_padrao.items():
-                    if bin_key not in dados_atuais:
-                        dados_atuais[bin_key] = info_padrao
-                salvar_estoque(dados_atuais)
-                return dados_atuais
-        except Exception:
-            pass
-            
-    salvar_estoque(estoque_padrao)
-    return estoque_padrao
+    return estoque_dados
 
 def salvar_estoque(dados):
-    with open(ESTOQUE_FILE, "w", encoding="utf-8") as f:
-        json.dump(dados, f, ensure_ascii=False, indent=4)
+    # Mantém a compatibilidade caso queira salvar em memória/arquivo
+    pass
 
 def carregar_saldos():
     if os.path.exists(SALDOS_FILE):
@@ -393,7 +363,6 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             PAGAMENTOS_PENDENTES[payment_id] = {"user_id": user.id, "valor": valor}
             registrar_log_pix(user.id, user.first_name, valor, payment_id, status="gerado")
 
-            # Mensagem limpa sem o ID técnico poluido
             texto = (
                 "💳 **Cobrança PIX Gerada com Sucesso!**\n\n"
                 f"💰 **Valor:** R$ {valor:.2f}\n\n"
