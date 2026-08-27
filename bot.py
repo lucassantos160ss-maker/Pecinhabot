@@ -4,6 +4,7 @@ import urllib.request
 import urllib.parse
 import uuid
 import json
+import asyncio
 from datetime import datetime
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -159,10 +160,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais da ElitePay
+# Credenciais oficiais atualizadas baseadas na documentação da ElitePay
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
 ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
-PIX_API_URL = 'https://elitepaybr.com/v1/payments'
+PIX_API_URL = 'https://api.elitepaybr.com/api/v1/deposit'
 
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
@@ -358,62 +359,45 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Valor invalido. Digite um numero maior que zero. Ex: /pix 5", parse_mode="Markdown")
         return
 
+    # Ajustado conforme os headers exigidos na documentação da ElitePay (x-client-id / x-client-secret)
     headers = {
-        "Authorization": f"Bearer {ELITEPAY_CLIENT_SECRET}",
-        "Client-ID": ELITEPAY_CLIENT_ID,
-        "Client-Secret": ELITEPAY_CLIENT_SECRET,
-        "Content-Type": "application/json",
-        "X-Idempotency-Key": str(uuid.uuid4())
+        "x-client-id": ELITEPAY_CLIENT_ID,
+        "x-client-secret": ELITEPAY_CLIENT_SECRET,
+        "Content-Type": "application/json"
     }
 
     payload = {
-        "transaction_amount": valor,
-        "description": f"Recarga de Saldo - Usuario {user.id}",
-        "payment_method_id": "pix",
-        "payer": {
-            "email": f"user_{user.id}@bot.com",
-            "first_name": user.first_name or "Usuario",
-            "last_name": "Telegram"
-        }
+        "amount": valor,
+        "description": f"Recarga Saldo Usuario {user.id}",
+        "payerName": user.first_name or "Usuario Telegram",
+        "payerDocument": "00000000000"  # CPF genérico ou padrão exigido pela rota
     }
-
-    urls_para_testar = [
-        PIX_API_URL, 
-        "https://api.elitepaybr.com/v1/payments", 
-        "https://elitepaybr.com/api/v1/charge"
-    ]
 
     sucesso = False
     res_data = None
 
-    for url in urls_para_testar:
-        try:
-            data_bytes = json.dumps(payload).encode('utf-8')
-            req = urllib.request.Request(url, data=data_bytes, headers=headers, method='POST')
-            
-            with urllib.request.urlopen(req, timeout=10) as response:
-                if response.status in [200, 201]:
-                    res_data = json.loads(response.read().decode('utf-8'))
-                    sucesso = True
-                    break
-        except urllib.error.HTTPError as e:
-            erro_corpo = e.read().decode('utf-8', errors='ignore')
-            logging.error(f"Tentativa falhou na URL {url} com HTTP {e.code}: {erro_corpo}")
-        except Exception as e:
-            logging.error(f"Tentativa falhou na URL {url}: {e}")
+    try:
+        data_bytes = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(PIX_API_URL, data=data_bytes, headers=headers, method='POST')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status in [200, 201]:
+                res_data = json.loads(response.read().decode('utf-8'))
+                sucesso = True
+    except urllib.error.HTTPError as e:
+        erro_corpo = e.read().decode('utf-8', errors='ignore')
+        logging.error(f"Erro HTTP ao gerar Pix na ElitePay ({e.code}): {erro_corpo}")
+    except Exception as e:
+        logging.error(f"Erro geral ao gerar Pix: {e}")
 
     if sucesso and res_data:
         try:
-            payment_id = str(res_data.get("id") or res_data.get("payment_id"))
-            
-            qr_code = None
-            try:
-                qr_code = res_data["point_of_interaction"]["transaction_data"]["qr_code"]
-            except KeyError:
-                qr_code = res_data.get("qr_code") or res_data.get("pix_copia_e_cola") or res_data.get("copia_e_cola")
+            # Pegando os campos exatos do response da doc (transactionId e copyPaste)
+            payment_id = str(res_data.get("transactionId") or res_data.get("id"))
+            qr_code = res_data.get("copyPaste") or res_data.get("qrCode") or res_data.get("pix_copia_e_cola")
 
             if not qr_code:
-                raise Exception("QR Code não encontrado no retorno da API.")
+                raise Exception("Código Copia e Cola não encontrado no retorno da API.")
 
             PAGAMENTOS_PENDENTES[payment_id] = {"user_id": user.id, "valor": valor}
             registrar_log_pix(user.id, user.first_name, valor, payment_id, status="gerado")
@@ -437,7 +421,7 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.error(f"Erro ao processar JSON de retorno da ElitePay: {ex}")
             await update.message.reply_text("A ElitePay respondeu, mas os dados do Pix vieram em formato inesperado.")
     else:
-        await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay. Verifique os logs no Render.")
+        await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay. Verifique as credenciais ou os logs no Render.")
 
 async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -447,9 +431,8 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
         user = query.from_user
 
         headers = {
-            "Authorization": f"Bearer {ELITEPAY_CLIENT_SECRET}",
-            "Client-ID": ELITEPAY_CLIENT_ID,
-            "Client-Secret": ELITEPAY_CLIENT_SECRET
+            "x-client-id": ELITEPAY_CLIENT_ID,
+            "x-client-secret": ELITEPAY_CLIENT_SECRET
         }
         req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
@@ -458,8 +441,8 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
                 res_data = json.loads(response.read().decode('utf-8'))
                 status = res_data.get("status")
 
-                if status == "approved":
-                    valor = float(res_data.get("transaction_amount", 0.0))
+                if status in ["approved", "APROVADO", "PAGO"]:
+                    valor = float(res_data.get("amount", res_data.get("transaction_amount", 0.0)))
                     saldo_atual = obter_saldo(user.id)
                     novo_saldo = saldo_atual + valor
                     atualizar_saldo(user.id, novo_saldo)
@@ -561,9 +544,9 @@ async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Adicionados {len(itens_novos)} itens na BIN {bin_id}.")
 
 # ----------------------------------------------------
-# Inicialização Oficial do Bot
+# Inicialização Assíncrona Oficial Compatível com Python 3.14
 # ----------------------------------------------------
-if __name__ == '__main__':
+async def main():
     t = Thread(target=iniciar_servidor_web)
     t.daemon = True
     t.start()
@@ -582,5 +565,16 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Iniciando bot com servidor web e polling...")
-    application.run_polling()
+    print("Iniciando bot com asyncio loop dedicado e integracao ElitePay...")
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    
+    stop_event = asyncio.Event()
+    await stop_event.wait()
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
