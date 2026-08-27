@@ -159,10 +159,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais Atualizadas da ElitePay
+# Credenciais e Endpoint Corrigidos da ElitePay
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
 ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb629'
-PIX_API_URL = 'https://api.elitepaybr.com/v1/payments' # Ajuste a URL base conforme a documentação oficial da ElitePay se necessário
+PIX_API_URL = 'https://elitepaybr.com/api/v1/payments'
 
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
@@ -406,6 +406,10 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
             else:
                 await update.message.reply_text("Ocorreu um erro ao gerar a cobranca PIX na ElitePay.")
+    except urllib.error.HTTPError as e:
+        erro_resposta = e.read().decode('utf-8', errors='ignore')
+        logging.error(f"Erro HTTP ElitePay: {e.code} - {erro_resposta}")
+        await update.message.reply_text(f"Erro da ElitePay ({e.code}): Verifique as credenciais ou parâmetros.")
     except Exception as e:
         logging.error(f"Erro no comando /pix com ElitePay: {e}")
         await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay.")
