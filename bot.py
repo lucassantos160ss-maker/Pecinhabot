@@ -33,10 +33,11 @@ def iniciar_servidor_web():
     servidor.serve_forever()
 
 # ----------------------------------------------------
-# Gestão de Estoque e Saldo via JSON (Persistente)
+# Gestão de Estoque, Saldo e Histórico via JSON
 # ----------------------------------------------------
 ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
+HISTORICO_FILE = "historico_compras.json"
 
 def carregar_estoque():
     estoque_padrao = {
@@ -89,6 +90,34 @@ def atualizar_saldo(user_id, novo_valor):
     saldos = carregar_saldos()
     saldos[user_id] = float(novo_valor)
     salvar_saldos(saldos)
+
+def carregar_historico():
+    if os.path.exists(HISTORICO_FILE):
+        try:
+            with open(HISTORICO_FILE, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+                return {int(k): v for k, v in dados.items()}
+        except Exception:
+            pass
+    return {}
+
+def salvar_historico(dados):
+    with open(HISTORICO_FILE, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=4)
+
+def adicionar_historico_usuario(user_id, item, bin_id, bandeira):
+    historico = carregar_historico()
+    user_str = str(user_id)
+    if user_str not in historico:
+        historico[user_str] = []
+    
+    historico[user_str].append({
+        "bin": bin_id,
+        "bandeira": bandeira,
+        "item": item,
+        "data": datetime.now().strftime("%d/%m/%Y %H:%M")
+    })
+    salvar_historico(historico)
 
 def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
     try:
@@ -194,6 +223,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("GGs Disponiveis", callback_data="ggs_disponiveis")],
+        [InlineKeyboardButton("Meus Cartões / Histórico", callback_data="historico_compras")],
         [InlineKeyboardButton("Recarregar", callback_data="recarregar"), InlineKeyboardButton("Suporte", url=URL_SUPORTE)],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -202,6 +232,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=reply_markup)
     else:
         await update.message.reply_text(text=texto, parse_mode="Markdown", reply_markup=reply_markup)
+
+async def historico_compras_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user = query.from_user
+    historico = carregar_historico()
+    compras_usuario = historico.get(str(user.id), [])
+
+    if not compras_usuario:
+        texto = "📦 Você ainda não realizou nenhuma compra de cartões."
+    else:
+        texto = "📦 **Seu Histórico de Cartões Comprados:**\n\n"
+        # Mostra do mais recente para o mais antigo, limitado aos últimos 15 para não estourar o limite do Telegram
+        for idx, compra in enumerate(reversed(compras_usuario[-15:]), 1):
+            texto += f"#{idx} - **BIN:** {compra['bin']} ({compra['bandeira']})\n"
+            texto += f"📅 {compra['data']}\n"
+            texto += f"`{compra['item']}`\n\n"
+
+    keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar_inicio")]]
+    await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def ggs_disponiveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -301,12 +352,16 @@ async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item_comprado = info["estoque"].pop(0)
     salvar_estoque(dados_bins)
 
+    # Salva no histórico permanente do usuário
+    adicionar_historico_usuario(user.id, item_comprado, bin_id, bandeira_nome)
+
     texto_sucesso = (
         "Compra Aprovada com Sucesso!\n\n"
         f"BIN: {bin_id} ({bandeira_nome})\n"
         "Dado entregue:\n"
         f"`{item_comprado}`\n\n"
-        f"Novo Saldo: R$ {novo_saldo:.2f}"
+        f"Novo Saldo: R$ {novo_saldo:.2f}\n\n"
+        "💡 *Dica:* Se precisar ver este cartão novamente, acesse 'Meus Cartões / Histórico' no menu inicial!"
     )
 
     keyboard = [
@@ -531,12 +586,13 @@ async def main():
 
     application.add_handler(CallbackQueryHandler(voltar_inicio, pattern="^voltar_inicio$"))
     application.add_handler(CallbackQueryHandler(ggs_disponiveis, pattern="^ggs_disponiveis$"))
+    application.add_handler(CallbackQueryHandler(historico_compras_callback, pattern="^historico_compras$"))
     application.add_handler(CallbackQueryHandler(selecionar_bin, pattern="^bin_"))
     application.add_handler(CallbackQueryHandler(efetuar_compra, pattern="^comprar_"))
     application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Iniciando bot com asyncio loop dedicado e integracao ElitePay limpa...")
+    print("Iniciando bot com asyncio loop dedicado e historico persistente de compras...")
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
