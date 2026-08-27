@@ -33,33 +33,36 @@ def iniciar_servidor_web():
     servidor.serve_forever()
 
 # ----------------------------------------------------
-# Gestão de Estoque Embutida (Segura contra perda de arquivos)
+# Gestão de Estoque e Saldo via JSON (Persistente)
 # ----------------------------------------------------
+ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
 
 def carregar_estoque():
-    # COLE OS SEUS 800 CARTÕES AQUI DENTRO DO ESTOQUE PADRÃO
-    estoque_dados = {
-        "250060": {
-            "bandeira": "Mastercard", 
-            "estoque": [
-                # Exemplo: "NUMERO|VALIDADE|CVV|NOME"
-                "250060000000001|03/31|111|Nome Exemplo"
-            ]
-        },
-        "374769": {
-            "bandeira": "Amex", 
-            "estoque": [
-                "374769002216776|10/30|0000|LIVE", 
-                "374769012120570|06/33|5457|LIVE"
-            ]
-        }
+    estoque_padrao = {
+        "250060": {"bandeira": "Mastercard", "estoque": []},
+        "250061": {"bandeira": "Mastercard", "estoque": []},
+        "406655": {"bandeira": "Visa", "estoque": []},
+        "374769": {"bandeira": "Amex", "estoque": []}
     }
-    return estoque_dados
+
+    if os.path.exists(ESTOQUE_FILE):
+        try:
+            with open(ESTOQUE_FILE, "r", encoding="utf-8") as f:
+                dados_atuais = json.load(f)
+                for bin_key, info_padrao in estoque_padrao.items():
+                    if bin_key not in dados_atuais:
+                        dados_atuais[bin_key] = info_padrao
+                return dados_atuais
+        except Exception:
+            pass
+            
+    salvar_estoque(estoque_padrao)
+    return estoque_padrao
 
 def salvar_estoque(dados):
-    # Mantém a compatibilidade caso queira salvar em memória/arquivo
-    pass
+    with open(ESTOQUE_FILE, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=4)
 
 def carregar_saldos():
     if os.path.exists(SALDOS_FILE):
