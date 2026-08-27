@@ -160,7 +160,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Novas credenciais ElitePay atualizadas
+# Credenciais ElitePay
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
 ELITEPAY_CLIENT_SECRET = 'eps_8e43e32f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
 PIX_API_URL = 'https://api.elitepaybr.com/api/v1/deposit'
@@ -393,13 +393,13 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             PAGAMENTOS_PENDENTES[payment_id] = {"user_id": user.id, "valor": valor}
             registrar_log_pix(user.id, user.first_name, valor, payment_id, status="gerado")
 
+            # Mensagem limpa sem o ID técnico poluido
             texto = (
-                "Cobranca PIX Gerada com Sucesso!\n\n"
-                f"Valor: R$ {valor:.2f}\n"
-                f"ID da Transacao: `{payment_id}`\n\n"
-                "Copie o codigo abaixo e pague no seu aplicativo de banco:\n\n"
+                "💳 **Cobrança PIX Gerada com Sucesso!**\n\n"
+                f"💰 **Valor:** R$ {valor:.2f}\n\n"
+                "📲 **Copie o código abaixo e pague no seu banco:**\n\n"
                 f"`{qr_code}`\n\n"
-                "Apos pagar, clique no botao abaixo para aprovar seu saldo."
+                "⏳ Após o pagamento, clique no botão abaixo para creditar seu saldo automaticamente."
             )
 
             keyboard = [
@@ -564,7 +564,7 @@ async def main():
     application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Iniciando bot com asyncio loop dedicado e integracao ElitePay...")
+    print("Iniciando bot com asyncio loop dedicado e integracao ElitePay limpa...")
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
