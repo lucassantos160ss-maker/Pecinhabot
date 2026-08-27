@@ -158,8 +158,12 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
-PIX_API_KEY = 'APP_USR-3303740326386787-081418-953681c933f125f4e5d8b34f8cf70ea8-3615204291'
-PIX_API_URL = 'https://api.mercadopago.com/v1/payments'
+
+# Credenciais Atualizadas da ElitePay
+ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
+ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb629'
+PIX_API_URL = 'https://api.elitepaybr.com/v1/payments' # Ajuste a URL base conforme a documentação oficial da ElitePay se necessário
+
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
 
@@ -355,7 +359,8 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     headers = {
-        "Authorization": f"Bearer {PIX_API_KEY}",
+        "Client-ID": ELITEPAY_CLIENT_ID,
+        "Client-Secret": ELITEPAY_CLIENT_SECRET,
         "Content-Type": "application/json",
         "X-Idempotency-Key": str(uuid.uuid4())
     }
@@ -400,10 +405,10 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
             else:
-                await update.message.reply_text("Ocorreu um erro ao gerar a cobranca PIX no Mercado Pago.")
+                await update.message.reply_text("Ocorreu um erro ao gerar a cobranca PIX na ElitePay.")
     except Exception as e:
-        logging.error(f"Erro no comando /pix: {e}")
-        await update.message.reply_text("Erro de conexao com o servidor de pagamento.")
+        logging.error(f"Erro no comando /pix com ElitePay: {e}")
+        await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay.")
 
 async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -412,7 +417,10 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
         payment_id = query.data.replace("verificar_pix_", "").strip()
         user = query.from_user
 
-        headers = {"Authorization": f"Bearer {PIX_API_KEY}"}
+        headers = {
+            "Client-ID": ELITEPAY_CLIENT_ID,
+            "Client-Secret": ELITEPAY_CLIENT_SECRET
+        }
         req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
         with urllib.request.urlopen(req) as response:
