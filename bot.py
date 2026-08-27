@@ -159,7 +159,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais da ElitePay (Client ID e Secret completos)
+# Credenciais da ElitePay
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
 ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
 PIX_API_URL = 'https://elitepaybr.com/v1/payments'
@@ -561,14 +561,14 @@ async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Adicionados {len(itens_novos)} itens na BIN {bin_id}.")
 
 # ----------------------------------------------------
-# Inicialização Oficial do Bot
+# Inicialização Oficial do Bot (Com descarte de conexões presas)
 # ----------------------------------------------------
 if __name__ == '__main__':
     t = Thread(target=iniciar_servidor_web)
     t.daemon = True
     t.start()
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(TOKEN).drop_pending_updates(True).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("pix", pix_command))
@@ -582,5 +582,5 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Iniciando bot com polling oficial...")
+    print("Iniciando bot com limpeza de conflitos e polling oficial...")
     application.run_polling()
