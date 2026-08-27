@@ -160,7 +160,6 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais oficiais atualizadas baseadas na documentação da ElitePay
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
 ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
 PIX_API_URL = 'https://api.elitepaybr.com/api/v1/deposit'
@@ -359,9 +358,10 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Valor invalido. Digite um numero maior que zero. Ex: /pix 5", parse_mode="Markdown")
         return
 
+    # Headers atualizados com os nomes exatos do painel (client-id e client-secret)
     headers = {
-        "x-client-id": ELITEPAY_CLIENT_ID,
-        "x-client-secret": ELITEPAY_CLIENT_SECRET,
+        "client-id": ELITEPAY_CLIENT_ID,
+        "client-secret": ELITEPAY_CLIENT_SECRET,
         "Content-Type": "application/json"
     }
 
@@ -424,8 +424,8 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
         user = query.from_user
 
         headers = {
-            "x-client-id": ELITEPAY_CLIENT_ID,
-            "x-client-secret": ELITEPAY_CLIENT_SECRET
+            "client-id": ELITEPAY_CLIENT_ID,
+            "client-secret": ELITEPAY_CLIENT_SECRET
         }
         req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
