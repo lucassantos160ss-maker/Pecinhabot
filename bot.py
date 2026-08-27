@@ -159,7 +159,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais da ElitePay (Client Secret corrigido e completo conforme o seu painel)
+# Credenciais da ElitePay (Client ID e Secret completos)
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
 ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
 PIX_API_URL = 'https://elitepaybr.com/v1/payments'
@@ -359,6 +359,7 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     headers = {
+        "Authorization": f"Bearer {ELITEPAY_CLIENT_SECRET}",
         "Client-ID": ELITEPAY_CLIENT_ID,
         "Client-Secret": ELITEPAY_CLIENT_SECRET,
         "Content-Type": "application/json",
@@ -376,43 +377,67 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
     }
 
-    try:
-        data_bytes = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(PIX_API_URL, data=data_bytes, headers=headers, method='POST')
-        
-        with urllib.request.urlopen(req) as response:
-            if response.status in [200, 201]:
-                res_data = json.loads(response.read().decode('utf-8'))
-                payment_id = str(res_data["id"])
+    urls_para_testar = [
+        PIX_API_URL, 
+        "https://api.elitepaybr.com/v1/payments", 
+        "https://elitepaybr.com/api/v1/charge"
+    ]
+
+    sucesso = False
+    res_data = None
+
+    for url in urls_para_testar:
+        try:
+            data_bytes = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(url, data=data_bytes, headers=headers, method='POST')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                if response.status in [200, 201]:
+                    res_data = json.loads(response.read().decode('utf-8'))
+                    sucesso = True
+                    break
+        except urllib.error.HTTPError as e:
+            erro_corpo = e.read().decode('utf-8', errors='ignore')
+            logging.error(f"Tentativa falhou na URL {url} com HTTP {e.code}: {erro_corpo}")
+        except Exception as e:
+            logging.error(f"Tentativa falhou na URL {url}: {e}")
+
+    if sucesso and res_data:
+        try:
+            payment_id = str(res_data.get("id") or res_data.get("payment_id"))
+            
+            qr_code = None
+            try:
                 qr_code = res_data["point_of_interaction"]["transaction_data"]["qr_code"]
-                
-                PAGAMENTOS_PENDENTES[payment_id] = {"user_id": user.id, "valor": valor}
-                registrar_log_pix(user.id, user.first_name, valor, payment_id, status="gerado")
+            except KeyError:
+                qr_code = res_data.get("qr_code") or res_data.get("pix_copia_e_cola") or res_data.get("copia_e_cola")
 
-                texto = (
-                    "Cobranca PIX Gerada com Sucesso!\n\n"
-                    f"Valor: R$ {valor:.2f}\n"
-                    f"ID da Transacao: `{payment_id}`\n\n"
-                    "Copie o codigo abaixo e pague no seu aplicativo de banco:\n\n"
-                    f"`{qr_code}`\n\n"
-                    "Apos pagar, clique no botao abaixo para aprovar seu saldo."
-                )
+            if not qr_code:
+                raise Exception("QR Code não encontrado no retorno da API.")
 
-                keyboard = [
-                    [InlineKeyboardButton("Verificar Pagamento", callback_data=f"verificar_pix_{payment_id}")],
-                    [InlineKeyboardButton("Voltar", callback_data="voltar_inicio")]
-                ]
+            PAGAMENTOS_PENDENTES[payment_id] = {"user_id": user.id, "valor": valor}
+            registrar_log_pix(user.id, user.first_name, valor, payment_id, status="gerado")
 
-                await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-            else:
-                await update.message.reply_text("Ocorreu um erro ao gerar a cobranca PIX na ElitePay.")
-    except urllib.error.HTTPError as e:
-        erro_resposta = e.read().decode('utf-8', errors='ignore')
-        logging.error(f"Erro HTTP ElitePay ({e.code}): {erro_resposta}")
-        await update.message.reply_text(f"Erro da ElitePay [{e.code}]: Verifique se a chave secreta está completa.")
-    except Exception as e:
-        logging.error(f"Erro no comando /pix com ElitePay: {e}")
-        await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay.")
+            texto = (
+                "Cobranca PIX Gerada com Sucesso!\n\n"
+                f"Valor: R$ {valor:.2f}\n"
+                f"ID da Transacao: `{payment_id}`\n\n"
+                "Copie o codigo abaixo e pague no seu aplicativo de banco:\n\n"
+                f"`{qr_code}`\n\n"
+                "Apos pagar, clique no botao abaixo para aprovar seu saldo."
+            )
+
+            keyboard = [
+                [InlineKeyboardButton("Verificar Pagamento", callback_data=f"verificar_pix_{payment_id}")],
+                [InlineKeyboardButton("Voltar", callback_data="voltar_inicio")]
+            ]
+
+            await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as ex:
+            logging.error(f"Erro ao processar JSON de retorno da ElitePay: {ex}")
+            await update.message.reply_text("A ElitePay respondeu, mas os dados do Pix vieram em formato inesperado.")
+    else:
+        await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay. Verifique os logs no Render.")
 
 async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -422,12 +447,13 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
         user = query.from_user
 
         headers = {
+            "Authorization": f"Bearer {ELITEPAY_CLIENT_SECRET}",
             "Client-ID": ELITEPAY_CLIENT_ID,
             "Client-Secret": ELITEPAY_CLIENT_SECRET
         }
         req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             if response.status == 200:
                 res_data = json.loads(response.read().decode('utf-8'))
                 status = res_data.get("status")
