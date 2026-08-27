@@ -561,14 +561,14 @@ async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Adicionados {len(itens_novos)} itens na BIN {bin_id}.")
 
 # ----------------------------------------------------
-# Inicialização Oficial do Bot (Com descarte de conexões presas)
+# Inicialização Oficial do Bot
 # ----------------------------------------------------
 if __name__ == '__main__':
     t = Thread(target=iniciar_servidor_web)
     t.daemon = True
     t.start()
 
-    application = ApplicationBuilder().token(TOKEN).drop_pending_updates(True).build()
+    application = ApplicationBuilder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("pix", pix_command))
@@ -582,5 +582,5 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Iniciando bot com limpeza de conflitos e polling oficial...")
+    print("Iniciando bot com servidor web e polling...")
     application.run_polling()
