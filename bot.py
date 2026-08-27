@@ -358,14 +358,17 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Valor invalido. Digite um numero maior que zero. Ex: /pix 5", parse_mode="Markdown")
         return
 
-    # Headers atualizados com os nomes exatos do painel (client-id e client-secret)
     headers = {
         "client-id": ELITEPAY_CLIENT_ID,
         "client-secret": ELITEPAY_CLIENT_SECRET,
+        "x-client-id": ELITEPAY_CLIENT_ID,
+        "x-client-secret": ELITEPAY_CLIENT_SECRET,
         "Content-Type": "application/json"
     }
 
     payload = {
+        "client_id": ELITEPAY_CLIENT_ID,
+        "client_secret": ELITEPAY_CLIENT_SECRET,
         "amount": valor,
         "description": f"Recarga Saldo Usuario {user.id}",
         "payerName": user.first_name or "Usuario Telegram",
@@ -425,7 +428,9 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         headers = {
             "client-id": ELITEPAY_CLIENT_ID,
-            "client-secret": ELITEPAY_CLIENT_SECRET
+            "client-secret": ELITEPAY_CLIENT_SECRET,
+            "x-client-id": ELITEPAY_CLIENT_ID,
+            "x-client-secret": ELITEPAY_CLIENT_SECRET
         }
         req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
