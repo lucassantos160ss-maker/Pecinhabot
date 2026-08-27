@@ -359,7 +359,6 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Valor invalido. Digite um numero maior que zero. Ex: /pix 5", parse_mode="Markdown")
         return
 
-    # Ajustado conforme os headers exigidos na documentação da ElitePay (x-client-id / x-client-secret)
     headers = {
         "x-client-id": ELITEPAY_CLIENT_ID,
         "x-client-secret": ELITEPAY_CLIENT_SECRET,
@@ -370,34 +369,22 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "amount": valor,
         "description": f"Recarga Saldo Usuario {user.id}",
         "payerName": user.first_name or "Usuario Telegram",
-        "payerDocument": "00000000000"  # CPF genérico ou padrão exigido pela rota
+        "payerDocument": "00000000000"
     }
-
-    sucesso = False
-    res_data = None
 
     try:
         data_bytes = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(PIX_API_URL, data=data_bytes, headers=headers, method='POST')
         
-        with urllib.request.urlopen(req, timeout=10) as response:
-            if response.status in [200, 201]:
-                res_data = json.loads(response.read().decode('utf-8'))
-                sucesso = True
-    except urllib.error.HTTPError as e:
-        erro_corpo = e.read().decode('utf-8', errors='ignore')
-        logging.error(f"Erro HTTP ao gerar Pix na ElitePay ({e.code}): {erro_corpo}")
-    except Exception as e:
-        logging.error(f"Erro geral ao gerar Pix: {e}")
-
-    if sucesso and res_data:
-        try:
-            # Pegando os campos exatos do response da doc (transactionId e copyPaste)
+        with urllib.request.urlopen(req, timeout=15) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            
             payment_id = str(res_data.get("transactionId") or res_data.get("id"))
             qr_code = res_data.get("copyPaste") or res_data.get("qrCode") or res_data.get("pix_copia_e_cola")
 
             if not qr_code:
-                raise Exception("Código Copia e Cola não encontrado no retorno da API.")
+                await update.message.reply_text(f"API respondeu, mas sem o código Pix. Retorno: {res_data}")
+                return
 
             PAGAMENTOS_PENDENTES[payment_id] = {"user_id": user.id, "valor": valor}
             registrar_log_pix(user.id, user.first_name, valor, payment_id, status="gerado")
@@ -417,11 +404,17 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
 
             await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception as ex:
-            logging.error(f"Erro ao processar JSON de retorno da ElitePay: {ex}")
-            await update.message.reply_text("A ElitePay respondeu, mas os dados do Pix vieram em formato inesperado.")
-    else:
-        await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay. Verifique as credenciais ou os logs no Render.")
+
+    except urllib.error.HTTPError as e:
+        erro_corpo = e.read().decode('utf-8', errors='ignore')
+        logging.error(f"Erro HTTP ElitePay ({e.code}): {erro_corpo}")
+        await update.message.reply_text(f"Erro da API ({e.code}):\n`{erro_corpo}`", parse_mode="Markdown")
+    except urllib.error.URLError as e:
+        logging.error(f"Erro de URL/Conexão ElitePay: {e.reason}")
+        await update.message.reply_text(f"Erro de conexão com `api.elitepaybr.com`: `{e.reason}`", parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Erro geral ao gerar Pix: {e}")
+        await update.message.reply_text(f"Erro inesperado: `{e}`", parse_mode="Markdown")
 
 async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
