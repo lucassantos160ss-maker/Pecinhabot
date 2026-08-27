@@ -160,8 +160,9 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
+# Novas credenciais ElitePay atualizadas
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
-ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
+ELITEPAY_CLIENT_SECRET = 'eps_8e43e32f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
 PIX_API_URL = 'https://api.elitepaybr.com/api/v1/deposit'
 
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
