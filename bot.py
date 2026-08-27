@@ -159,10 +159,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais e Endpoint Corrigidos da ElitePay
+# Credenciais da ElitePay (Client Secret corrigido e completo conforme o seu painel)
 ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
-ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb629'
-PIX_API_URL = 'https://elitepaybr.com/api/v1/payments'
+ELITEPAY_CLIENT_SECRET = 'eps_8e43e2f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
+PIX_API_URL = 'https://elitepaybr.com/v1/payments'
 
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
@@ -408,8 +408,8 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Ocorreu um erro ao gerar a cobranca PIX na ElitePay.")
     except urllib.error.HTTPError as e:
         erro_resposta = e.read().decode('utf-8', errors='ignore')
-        logging.error(f"Erro HTTP ElitePay: {e.code} - {erro_resposta}")
-        await update.message.reply_text(f"Erro da ElitePay ({e.code}): Verifique as credenciais ou parâmetros.")
+        logging.error(f"Erro HTTP ElitePay ({e.code}): {erro_resposta}")
+        await update.message.reply_text(f"Erro da ElitePay [{e.code}]: Verifique se a chave secreta está completa.")
     except Exception as e:
         logging.error(f"Erro no comando /pix com ElitePay: {e}")
         await update.message.reply_text("Erro de conexao com o servidor de pagamento da ElitePay.")
@@ -538,21 +538,17 @@ async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Inicialização Oficial do Bot
 # ----------------------------------------------------
 if __name__ == '__main__':
-    # Sobe o servidor web em segundo plano para o Render não derrubar a aplicação
     t = Thread(target=iniciar_servidor_web)
     t.daemon = True
     t.start()
 
-    # Cria a aplicação do Telegram usando o método oficial de construção nativa
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Registros de Comandos
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("pix", pix_command))
     application.add_handler(CommandHandler("admpix", admpix))
     application.add_handler(CommandHandler("addestoque", addestoque))
 
-    # Registros de Botões (Callbacks)
     application.add_handler(CallbackQueryHandler(voltar_inicio, pattern="^voltar_inicio$"))
     application.add_handler(CallbackQueryHandler(ggs_disponiveis, pattern="^ggs_disponiveis$"))
     application.add_handler(CallbackQueryHandler(selecionar_bin, pattern="^bin_"))
