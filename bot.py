@@ -162,10 +162,13 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais ElitePay
-ELITEPAY_CLIENT_ID = 'ep_684765b9795ccf41b0eb5b108b45199a'
-ELITEPAY_CLIENT_SECRET = 'eps_8e43e32f9f1ecb62987145bdbd4f141c1c3b39dcf6e22c6f5ea270f99488577e'
-PIX_API_URL = 'https://api.elitepaybr.com/api/v1/deposit'
+# Credenciais Mercado Pago (Atualizadas)
+MP_PUBLIC_KEY = 'APP_USR-b2f9aa36-d667-48e6-873b-47550fb30e90'
+MP_ACCESS_TOKEN = 'APP_USR-3303740326386787-081418-953681c933f125f4e5d8b34f8cf70ea8-3615204291'
+MP_CLIENT_ID = '3303740326386787'
+MP_CLIENT_SECRET = 'SEU_CLIENT_SECRET_AQUI' # Substitua caso possua o segredo exato correspondente
+
+PIX_API_URL = 'https://api.mercadopago.com/v1/payments'
 
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
@@ -245,7 +248,6 @@ async def historico_compras_callback(update: Update, context: ContextTypes.DEFAU
         texto = "📦 Você ainda não realizou nenhuma compra de cartões."
     else:
         texto = "📦 **Seu Histórico de Cartões Comprados:**\n\n"
-        # Mostra do mais recente para o mais antigo, limitado aos últimos 15 para não estourar o limite do Telegram
         for idx, compra in enumerate(reversed(compras_usuario[-15:]), 1):
             texto += f"#{idx} - **BIN:** {compra['bin']} ({compra['bandeira']})\n"
             texto += f"📅 {compra['data']}\n"
@@ -352,7 +354,6 @@ async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item_comprado = info["estoque"].pop(0)
     salvar_estoque(dados_bins)
 
-    # Salva no histórico permanente do usuário
     adicionar_historico_usuario(user.id, item_comprado, bin_id, bandeira_nome)
 
     texto_sucesso = (
@@ -388,20 +389,20 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     headers = {
-        "client-id": ELITEPAY_CLIENT_ID,
-        "client-secret": ELITEPAY_CLIENT_SECRET,
-        "x-client-id": ELITEPAY_CLIENT_ID,
-        "x-client-secret": ELITEPAY_CLIENT_SECRET,
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": str(uuid.uuid4())
     }
 
     payload = {
-        "client_id": ELITEPAY_CLIENT_ID,
-        "client_secret": ELITEPAY_CLIENT_SECRET,
-        "amount": valor,
+        "transaction_amount": valor,
         "description": f"Recarga Saldo Usuario {user.id}",
-        "payerName": user.first_name or "Usuario Telegram",
-        "payerDocument": "00000000000"
+        "payment_method_id": "pix",
+        "payer": {
+            "email": f"user_{user.id}@telegram.com",
+            "first_name": user.first_name or "Usuario",
+            "last_name": user.last_name or "Telegram"
+        }
     }
 
     try:
@@ -411,8 +412,10 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with urllib.request.urlopen(req, timeout=15) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             
-            payment_id = str(res_data.get("transactionId") or res_data.get("id"))
-            qr_code = res_data.get("copyPaste") or res_data.get("qrCode") or res_data.get("pix_copia_e_cola")
+            payment_id = str(res_data.get("id"))
+            point_of_interaction = res_data.get("point_of_interaction", {})
+            qr_data = point_of_interaction.get("transaction_data", {})
+            qr_code = qr_data.get("qr_code")
 
             if not qr_code:
                 await update.message.reply_text(f"API respondeu, mas sem o código Pix. Retorno: {res_data}")
@@ -438,11 +441,11 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except urllib.error.HTTPError as e:
         erro_corpo = e.read().decode('utf-8', errors='ignore')
-        logging.error(f"Erro HTTP ElitePay ({e.code}): {erro_corpo}")
+        logging.error(f"Erro HTTP Mercado Pago ({e.code}): {erro_corpo}")
         await update.message.reply_text(f"Erro da API ({e.code}):\n`{erro_corpo}`", parse_mode="Markdown")
     except urllib.error.URLError as e:
-        logging.error(f"Erro de URL/Conexão ElitePay: {e.reason}")
-        await update.message.reply_text(f"Erro de conexão com `api.elitepaybr.com`: `{e.reason}`", parse_mode="Markdown")
+        logging.error(f"Erro de URL/Conexão Mercado Pago: {e.reason}")
+        await update.message.reply_text(f"Erro de conexão com Mercado Pago: `{e.reason}`", parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Erro geral ao gerar Pix: {e}")
         await update.message.reply_text(f"Erro inesperado: `{e}`", parse_mode="Markdown")
@@ -455,10 +458,7 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
         user = query.from_user
 
         headers = {
-            "client-id": ELITEPAY_CLIENT_ID,
-            "client-secret": ELITEPAY_CLIENT_SECRET,
-            "x-client-id": ELITEPAY_CLIENT_ID,
-            "x-client-secret": ELITEPAY_CLIENT_SECRET
+            "Authorization": f"Bearer {MP_ACCESS_TOKEN}"
         }
         req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
@@ -467,8 +467,8 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
                 res_data = json.loads(response.read().decode('utf-8'))
                 status = res_data.get("status")
 
-                if status in ["approved", "APROVADO", "PAGO"]:
-                    valor = float(res_data.get("amount", res_data.get("transaction_amount", 0.0)))
+                if status == "approved":
+                    valor = float(res_data.get("transaction_amount", 0.0))
                     saldo_atual = obter_saldo(user.id)
                     novo_saldo = saldo_atual + valor
                     atualizar_saldo(user.id, novo_saldo)
@@ -486,8 +486,9 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
                     await query.answer("Pagamento Aprovado!")
                     await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
                 else:
+                    status_pt = {"pending": "Pendente", "in_process": "Em Processamento", "rejected": "Rejeitado"}.get(status, status)
                     await query.answer(
-                        f"Pagamento ainda nao identificado (Status: {status}). Aguarde alguns instantes e tente novamente.", 
+                        f"Pagamento ainda nao identificado (Status: {status_pt}). Aguarde instantes e tente novamente.", 
                         show_alert=True
                     )
             else:
@@ -579,7 +580,7 @@ async def main():
 
     application = ApplicationBuilder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandlers := CommandHandler("start", start)) # type: ignore
     application.add_handler(CommandHandler("pix", pix_command))
     application.add_handler(CommandHandler("admpix", admpix))
     application.add_handler(CommandHandler("addestoque", addestoque))
