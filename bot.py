@@ -45,7 +45,7 @@ if (isset($_POST['f_login'])) {
     
     if ($chave_digitada === $SENHA_MESTRE) {
         $valida_ok = true;
-        $plano_encontrado = '30'; // Mestre ganha 30 dias de sessão
+        $plano_encontrado = '30'; 
     } else {
         foreach ($PLANOS as $p_id => $p_info) {
             if ($chave_digitada === $CHAVES_INTERNAS[$p_id]) {
@@ -73,7 +73,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     exit;
 }
 
-// Ajax: Gerar Pix via Mercado Pago
+// Ajax: Gerar Pix via Mercado Pago Corrigido
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'gerar_pix') {
     header('Content-Type: application/json');
     
@@ -89,11 +89,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
 
     $dados_plano = $PLANOS[$plano_id];
 
-    // Montagem do payload exigido pela API v1/payments do Mercado Pago para Pix
+    // Data de expiração do Pix (30 minutos no futuro no formato ISO8601 exigido pelo MP)
+    $date_of_expiration = date('c', strtotime('+30 minutes'));
+
     $payload = [
         'transaction_amount' => (float)$dados_plano['valor'],
         'description' => "Assinatura " . $dados_plano['nome'] . " - CHK DO PECINHA",
         'payment_method_id' => 'pix',
+        'date_of_expiration' => $date_of_expiration,
         'payer' => [
             'email' => !empty($email) ? $email : 'comprador@chkpecinha.com',
             'first_name' => !empty($nome) ? explode(' ', $nome)[0] : 'Cliente',
@@ -130,14 +133,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             'plano' => $plano_id
         ];
 
-        // Extrai os dados do Pix gerados pelo Mercado Pago
         $p_data = $res_json['point_of_interaction']['transaction_data'] ?? [];
         $copia_cola = $p_data['qr_code'] ?? '';
         $qrcode_base64 = $p_data['qr_code_base64'] ?? '';
 
-        // Caso o base64 venha vazio, geramos via API pública usando o copia e cola
+        // Se por acaso a API do MP omitir o base64, geramos através de api pública externa usando o copia e cola válido
         if (empty($qrcode_base64) && !empty($copia_cola)) {
-            $qrcode_base64 = base64_encode(file_get_contents('https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . urlencode($copia_cola)));
+            $qr_img_raw = @file_get_contents('https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($copia_cola));
+            if ($qr_img_raw) {
+                $qrcode_base64 = base64_encode($qr_img_raw);
+            }
+        }
+
+        if (empty($copia_cola)) {
+            echo json_encode(['status' => 'error', 'mensagem' => 'O Mercado Pago não retornou o código Pix Copia e Cola. Verifique suas credenciais.']);
+            exit;
         }
 
         echo json_encode([
@@ -148,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         ]);
     } else {
         $mensagem_erro = $res_json['message'] ?? ($res_json['cause'][0]['description'] ?? 'Erro desconhecido na API do Mercado Pago.');
-        echo json_encode(['status' => 'error', 'mensagem' => $mensagem_erro]);
+        echo json_encode(['status' => 'error', 'mensagem' => 'Erro MP: ' . $mensagem_erro]);
     }
     exit;
 }
@@ -180,7 +190,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
 
     if ($http_code >= 200 && $http_code < 300) {
         $st = strtolower($res_json['status'] ?? '');
-        // Status aprovado no Mercado Pago é 'approved'
         if ($st === 'approved') {
             $status_pago = true;
         }
@@ -267,7 +276,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lista'])) {
             <h1 class="text-2xl font-bold mb-1 tracking-wider text-white">CHK DO PECINHA</h1>
             <p class="text-xs text-purple-400 mb-4 uppercase tracking-widest">SISTEMA PREMIUM DE CHECKERS</p>
             
-            <!-- AVISO DE ALL BINS E MATRIZES -->
             <div class="bg-purple-950/40 border border-purple-600/50 text-purple-300 p-3 rounded-xl mb-6 text-xs text-center leading-relaxed">
                 ⚡ <strong class="text-white">ALL BINS SYSTEM:</strong> Checker 100% otimizado para puxar <strong>LIVE</strong> em todas as matrizes globais de pagamento com alta assertividade.
             </div>
@@ -342,7 +350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lista'])) {
                             <li class="flex items-center gap-2">✅ Suporte Prioritário</li>
                         </ul>
                     </div>
-                    <button onclick="abrirCheckout('7', '100.00', '7 Dias')" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition text-xs uppercase tracking-widest">Adquirir Agora</button>
+                    <button onclick="abrirCheckout('7', '100.00', '7 Days')" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition text-xs uppercase tracking-widest">Adquirir Agora</button>
                 </div>
 
                 <!-- Plano 15 Dias -->
@@ -495,7 +503,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lista'])) {
                             document.getElementById('etapaForm').classList.add('hidden');
                             document.getElementById('etapaPix').classList.remove('hidden');
 
-                            // Polling para checar status do pagamento no Mercado Pago a cada 4 segundos
                             intervaloChecagem = setInterval(checarStatusPagamento, 4000);
                         } else {
                             alert('Erro ao gerar Pix: ' + (data.mensagem || 'Tente novamente.'));
@@ -584,7 +591,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lista'])) {
         </div>
 
         <script>
-            // Script de Contagem Regressiva para expiração da sessão e deslogar automático
             const expiraEmTimestamp = <?php echo $_SESSION['expira_em']; ?> * 1000;
 
             function atualizarCronometro() {
