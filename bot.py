@@ -73,7 +73,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     exit;
 }
 
-// Ajax: Gerar Pix via Mercado Pago Corrigido
+// Ajax: Gerar Pix via Mercado Pago com Diagnóstico de Erro Integrado
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'gerar_pix') {
     header('Content-Type: application/json');
     
@@ -88,8 +88,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 
     $dados_plano = $PLANOS[$plano_id];
-
-    // Data de expiração do Pix (30 minutos no futuro no formato ISO8601 exigido pelo MP)
     $date_of_expiration = date('c', strtotime('+30 minutes'));
 
     $payload = [
@@ -123,9 +121,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    // Diagnóstico detalhado caso o Mercado Pago recuse a transação
+    if ($http_code < 200 || $http_code >= 300) {
+        echo json_encode([
+            'status' => 'error', 
+            'mensagem' => 'Erro HTTP ' . $http_code . ' - Resposta: ' . $response
+        ]);
+        exit;
+    }
+
     $res_json = json_decode($response, true);
 
-    if ($http_code >= 200 && $http_code < 300 && isset($res_json['id'])) {
+    if (isset($res_json['id'])) {
         $payment_id = $res_json['id'];
         
         $_SESSION['transacao_ativa'] = [
@@ -137,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         $copia_cola = $p_data['qr_code'] ?? '';
         $qrcode_base64 = $p_data['qr_code_base64'] ?? '';
 
-        // Se por acaso a API do MP omitir o base64, geramos através de api pública externa usando o copia e cola válido
         if (empty($qrcode_base64) && !empty($copia_cola)) {
             $qr_img_raw = @file_get_contents('https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($copia_cola));
             if ($qr_img_raw) {
@@ -146,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         }
 
         if (empty($copia_cola)) {
-            echo json_encode(['status' => 'error', 'mensagem' => 'O Mercado Pago não retornou o código Pix Copia e Cola. Verifique suas credenciais.']);
+            echo json_encode(['status' => 'error', 'mensagem' => 'O Mercado Pago não retornou o código Pix Copia e Cola.']);
             exit;
         }
 
