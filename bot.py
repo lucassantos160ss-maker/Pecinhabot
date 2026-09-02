@@ -38,14 +38,20 @@ ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
 HISTORICO_FILE = "historico_compras.json"
 
-# Dicionário de preços das BINs fornecidas
+# Dicionário de preços das BINs fornecidas (Anteriores + Novas)
 PRECOS_BINS = {
+    # Lista Anterior
     "250060": 6.0, "250061": 12.0, "406655": 6.0, "406669": 5.0,
     "414718": 4.0, "414720": 2.0, "415896": 4.0, "417938": 5.0,
     "421960": 5.0, "422061": 4.0, "425850": 7.0, "449773": 7.0,
     "459384": 5.0, "464611": 8.0, "466068": 5.0, "466070": 5.0,
     "478200": 4.0, "485464": 6.0, "489389": 6.0, "498407": 7.0,
-    "512267": 6.0, "512707": 8.0, "515104": 8.0, "515601": 10.0
+    "512267": 6.0, "512707": 8.0, "515104": 8.0, "515601": 10.0,
+    
+    # Novas BINs Adicionadas
+    "516136": 7.0, "516162": 15.0, "520132": 8.0, "522590": 6.0,
+    "536537": 8.0, "540593": 8.0, "547408": 7.0, "552305": 12.0,
+    "552316": 12.0
 }
 
 def gerar_estoque_ficticio(bin_id, quantidade=50):
@@ -267,7 +273,7 @@ async def ggs_disponiveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     linha = []
 
-    # Monta os botões exatamente no formato: BIN | R$ VALOR (sem a quantidade de estoque)
+    # Monta os botões exatamente no formato: BIN | R$ VALOR
     for bin_id in PRECOS_BINS.keys():
         valor = PRECOS_BINS[bin_id]
         str_valor = f"{valor:.2f}".replace('.', ',').rstrip('0').rstrip(',') if valor.is_integer() else f"{valor:.2f}".replace('.', ',')
