@@ -8,7 +8,6 @@ import asyncio
 from datetime import datetime
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -18,7 +17,7 @@ from telegram.ext import (
 )
 
 # ----------------------------------------------------
-# Mini Servidor Web para atender aos requisitos do Render (Keep-Alive)
+# Mini Servidor Web para atender aos requisitos do Render
 # ----------------------------------------------------
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -39,27 +38,48 @@ ESTOQUE_FILE = "estoque.json"
 SALDOS_FILE = "saldos.json"
 HISTORICO_FILE = "historico_compras.json"
 
-def carregar_estoque():
-    estoque_padrao = {
-        "250060": {"bandeira": "Mastercard", "estoque": []},
-        "250061": {"bandeira": "Mastercard", "estoque": []},
-        "406655": {"bandeira": "Visa", "estoque": []},
-        "374769": {"bandeira": "Amex", "estoque": []}
-    }
+# Dicionário de preços das BINs fornecidas
+PRECOS_BINS = {
+    "250060": 6.0, "250061": 12.0, "406655": 6.0, "406669": 5.0,
+    "414718": 4.0, "414720": 2.0, "415896": 4.0, "417938": 5.0,
+    "421960": 5.0, "422061": 4.0, "425850": 7.0, "449773": 7.0,
+    "459384": 5.0, "464611": 8.0, "466068": 5.0, "466070": 5.0,
+    "478200": 4.0, "485464": 6.0, "489389": 6.0, "498407": 7.0,
+    "512267": 6.0, "512707": 8.0, "515104": 8.0, "515601": 10.0
+}
 
+def gerar_estoque_ficticio(bin_id, quantidade=50):
+    """Gera itens fictícios para a BIN para simular um grande estoque."""
+    itens = []
+    for i in range(1, quantidade + 1):
+        num_cartao = f"{bin_id}{i:010d}"
+        itens.append(f"{num_cartao}|12|2029|999|Nome Ficticio|12345678900")
+    return itens
+
+def carregar_estoque():
+    dados_atuais = {}
     if os.path.exists(ESTOQUE_FILE):
         try:
             with open(ESTOQUE_FILE, "r", encoding="utf-8") as f:
                 dados_atuais = json.load(f)
-                for bin_key, info_padrao in estoque_padrao.items():
-                    if bin_key not in dados_atuais:
-                        dados_atuais[bin_key] = info_padrao
-                return dados_atuais
         except Exception:
-            pass
-            
-    salvar_estoque(estoque_padrao)
-    return estoque_padrao
+            dados_atuais = {}
+
+    # Preenche as BINs que faltarem ou que estiverem sem estoque com dados fictícios
+    alterou = False
+    for bin_key in PRECOS_BINS.keys():
+        bandeira = "Visa" if bin_key.startswith("4") else ("Mastercard" if bin_key.startswith("5") or bin_key.startswith("2") else "Outra")
+        if bin_key not in dados_atuais or not dados_atuais[bin_key].get("estoque"):
+            dados_atuais[bin_key] = {
+                "bandeira": bandeira,
+                "estoque": gerar_estoque_ficticio(bin_key)
+            }
+            alterou = True
+
+    if alterou:
+        salvar_estoque(dados_atuais)
+
+    return dados_atuais
 
 def salvar_estoque(dados):
     with open(ESTOQUE_FILE, "w", encoding="utf-8") as f:
@@ -70,7 +90,7 @@ def carregar_saldos():
         try:
             with open(SALDOS_FILE, "r", encoding="utf-8") as f:
                 dados = json.load(f)
-                return {int(k): float(v) for k, v in dados.items()}
+            return {int(k): float(v) for k, v in dados.items()}
         except Exception:
             pass
     return {}
@@ -96,7 +116,7 @@ def carregar_historico():
         try:
             with open(HISTORICO_FILE, "r", encoding="utf-8") as f:
                 dados = json.load(f)
-                return {int(k): v for k, v in dados.items()}
+            return {int(k): v for k, v in dados.items()}
         except Exception:
             pass
     return {}
@@ -110,7 +130,6 @@ def adicionar_historico_usuario(user_id, item, bin_id, bandeira):
     user_str = str(user_id)
     if user_str not in historico:
         historico[user_str] = []
-    
     historico[user_str].append({
         "bin": bin_id,
         "bandeira": bandeira,
@@ -124,7 +143,6 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
         os.makedirs("logs", exist_ok=True)
         hoje = datetime.now().strftime("%Y-%m-%d")
         caminho_arquivo = f"logs/pix_logs_{hoje}.json"
-        
         logs = []
         if os.path.exists(caminho_arquivo):
             try:
@@ -132,14 +150,14 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
                     logs = json.load(f)
             except Exception:
                 logs = []
-                
+
         registro_existente = False
         for log in logs:
             if str(log.get("payment_id")) == str(payment_id):
                 log["status"] = status
                 registro_existente = True
                 break
-                
+
         if not registro_existente:
             logs.append({
                 "hora": datetime.now().strftime("%H:%M:%S"),
@@ -149,7 +167,7 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
                 "status": status,
                 "payment_id": str(payment_id)
             })
-            
+
         with open(caminho_arquivo, "w", encoding="utf-8") as f:
             json.dump(logs, f, ensure_ascii=False, indent=4)
     except Exception as e:
@@ -159,40 +177,17 @@ def registrar_log_pix(user_id, nome, valor, payment_id, status="gerado"):
 # Configurações do Bot
 # ----------------------------------------------------
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
 TOKEN = '8918914171:AAEQQQ1u1Og7S8runtt0_OWDeIgjlyRct2A'
 
-# Credenciais Mercado Pago (Atualizadas)
 MP_PUBLIC_KEY = 'APP_USR-b2f9aa36-d667-48e6-873b-47550fb30e90'
 MP_ACCESS_TOKEN = 'APP_USR-3303740326386787-081418-953681c933f125f4e5d8b34f8cf70ea8-3615204291'
-MP_CLIENT_ID = '3303740326386787'
-MP_CLIENT_SECRET = 'SEU_CLIENT_SECRET_AQUI' # Substitua caso possua o segredo exato correspondente
-
 PIX_API_URL = 'https://api.mercadopago.com/v1/payments'
-
 URL_SUPORTE = 'https://t.me/Pecinhadosete'
 URL_IMAGEM = "https://i.ibb.co/VcSYtKr2/pecinha-inicio.jpg"
-
 PAGAMENTOS_PENDENTES = {}
 
-def calcular_preco_e_bandeira(bin_id, bandeira_cadastrada=""):
-    precos_personalizados = {
-        "250060": 6.0, "250061": 12.0, "406655": 6.0, "414718": 4.0,
-        "415896": 4.0, "417938": 5.0, "421960": 5.0, "422061": 4.0,
-        "425850": 7.0, "449773": 7.0, "459384": 5.0, "464611": 12.0,
-        "466068": 5.0, "466070": 5.0, "478200": 4.0, "485464": 6.0,
-        "489389": 6.0, "498407": 7.0, "498408": 7.0, "515104": 8.0,
-        "516162": 15.0, "520132": 8.0, "536537": 8.0, "537986": 6.0,
-        "540593": 8.0, "547408": 7.0, "552305": 12.0, "552316": 12.0
-    }
-    
-    if bin_id in precos_personalizados:
-        return precos_personalizados[bin_id]
-        
-    if "amex" in bandeira_cadastrada.lower() or bin_id.startswith("37"):
-        return 10.0
-    else:
-        return 5.0
+def calcular_preco(bin_id):
+    return PRECOS_BINS.get(bin_id, 5.0)
 
 # ----------------------------------------------------
 # Comandos Principais
@@ -206,26 +201,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
 
     saldo = obter_saldo(user.id)
-
     texto = (
         f"[\u200b]({URL_IMAGEM})"
-        f"Ola {user.first_name}, seja muito bem-vindo!\n\n"
-        "Atencao: Este e um bot que vende Geradas!\n"
-        "Todos os nossos produtos estao com novos precos!\n\n"
+        f"Olá {user.first_name}, seja muito bem-vindo!\n\n"
+        "Atenção: Este é um bot que vende Geradas!\n"
+        "Todos os nossos produtos estão com novos preços!\n\n"
         "Precisa de ajuda? Chame o Suporte\n"
-        "Informacoes Rapidas:\n"
-        "- GGs com nomes e CPFs aleatorios.\n"
+        "Informações Rápidas:\n"
+        "- GGs com nomes e CPFs aleatórios.\n"
         "- Logins diretos do painel.\n"
-        "- Recargas instantaneas via /pix [valor] (Ex: /pix 10).\n"
-        "- GGs Direto do Chk.\n"
+        "- Recargas instantâneas via /pix [valor] (Ex: /pix 10).\n"
         "- Leia as Regras antes de comprar.\n\n"
         "Seu perfil:\n"
         f" - ID: `{user.id}`\n"
         f" - Saldo: R$ {saldo:.2f}"
     )
-
     keyboard = [
-        [InlineKeyboardButton("GGs Disponiveis", callback_data="ggs_disponiveis")],
+        [InlineKeyboardButton("GGs Disponíveis", callback_data="ggs_disponiveis")],
         [InlineKeyboardButton("Meus Cartões / Histórico", callback_data="historico_compras")],
         [InlineKeyboardButton("Recarregar", callback_data="recarregar"), InlineKeyboardButton("Suporte", url=URL_SUPORTE)],
     ]
@@ -239,8 +231,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def historico_compras_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user = query.from_user
+
     historico = carregar_historico()
     compras_usuario = historico.get(str(user.id), [])
 
@@ -259,13 +251,13 @@ async def historico_compras_callback(update: Update, context: ContextTypes.DEFAU
 async def ggs_disponiveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user = query.from_user
+
     saldo = obter_saldo(user.id)
     dados_bins = carregar_estoque()
 
     texto = (
-        "GGs Disponiveis (Preco de Atacado)\n"
+        "GGs Disponíveis\n"
         "Escolha a BIN desejada para ver detalhes e confirmar a compra.\n\n"
         "Seu perfil:\n"
         f" - ID: `{user.id}`\n"
@@ -274,25 +266,23 @@ async def ggs_disponiveis(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     linha = []
-    
-    for bin_id, info in dados_bins.items():
-        qtd = len(info.get("estoque", []))
-        bandeira_nome = info.get('bandeira', 'Cartao')
+
+    # Monta os botões exatamente no formato: BIN | R$ VALOR (sem a quantidade de estoque)
+    for bin_id in PRECOS_BINS.keys():
+        valor = PRECOS_BINS[bin_id]
+        str_valor = f"{valor:.2f}".replace('.', ',').rstrip('0').rstrip(',') if valor.is_integer() else f"{valor:.2f}".replace('.', ',')
+        btn_txt = f"{bin_id} | R$ {str_valor}"
         
-        valor = calcular_preco_e_bandeira(bin_id, bandeira_nome)
-        str_valor = f"{valor:.2f}".replace('.', ',')
-        
-        btn_txt = f"{bin_id} ({qtd}) | R$ {str_valor}"
         linha.append(InlineKeyboardButton(btn_txt, callback_data=f"bin_{bin_id}"))
-        
+
         if len(linha) == 2:
             keyboard.append(linha)
             linha = []
-            
+
     if linha:
         keyboard.append(linha)
 
-    keyboard.append([InlineKeyboardButton("Pedir bin especifica", url=URL_SUPORTE)])
+    keyboard.append([InlineKeyboardButton("Pedir bin específica", url=URL_SUPORTE)])
     keyboard.append([InlineKeyboardButton("Voltar", callback_data="voltar_inicio")])
 
     await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -306,18 +296,16 @@ async def selecionar_bin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     info = dados_bins.get(bin_id)
 
     if not info:
-        await query.answer("BIN nao encontrada!", show_alert=True)
+        await query.answer("BIN não encontrada!", show_alert=True)
         return
 
-    qtd_disponivel = len(info.get("estoque", []))
     bandeira_nome = info.get('bandeira', 'Desconhecida')
-    preco = calcular_preco_e_bandeira(bin_id, bandeira_nome)
+    preco = calcular_preco(bin_id)
 
     texto = (
         f"Detalhes da BIN: {bin_id}\n"
         f"Bandeira: {bandeira_nome}\n"
-        f"Preco unitario: R$ {preco:.2f}\n"
-        f"Estoque disponivel: {qtd_disponivel} unidades\n\n"
+        f"Preço unitário: R$ {preco:.2f}\n\n"
         "Deseja realizar a compra agora usando o seu saldo?"
     )
 
@@ -332,7 +320,7 @@ async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     bin_id = query.data.split('_')[1]
-    
+
     dados_bins = carregar_estoque()
     info = dados_bins.get(bin_id)
 
@@ -340,8 +328,8 @@ async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Estoque esgotado para esta BIN!", show_alert=True)
         return
 
-    bandeira_nome = info.get('bandeira', 'Cartao')
-    preco = calcular_preco_e_bandeira(bin_id, bandeira_nome)
+    bandeira_nome = info.get('bandeira', 'Cartão')
+    preco = calcular_preco(bin_id)
     saldo_atual = obter_saldo(user.id)
 
     if saldo_atual < preco:
@@ -351,9 +339,11 @@ async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     novo_saldo = saldo_atual - preco
     atualizar_saldo(user.id, novo_saldo)
 
+    # Retira o item do estoque e salva
     item_comprado = info["estoque"].pop(0)
     salvar_estoque(dados_bins)
 
+    # Registra no histórico do usuário
     adicionar_historico_usuario(user.id, item_comprado, bin_id, bandeira_nome)
 
     texto_sucesso = (
@@ -375,7 +365,7 @@ async def efetuar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     args = context.args
-    
+
     if not args:
         await update.message.reply_text("Por favor, informe o valor. Exemplo: /pix 10", parse_mode="Markdown")
         return
@@ -385,7 +375,7 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if valor <= 0:
             raise ValueError
     except ValueError:
-        await update.message.reply_text("Valor invalido. Digite um numero maior que zero. Ex: /pix 5", parse_mode="Markdown")
+        await update.message.reply_text("Valor inválido. Digite um número maior que zero. Ex: /pix 5", parse_mode="Markdown")
         return
 
     headers = {
@@ -408,17 +398,17 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         data_bytes = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(PIX_API_URL, data=data_bytes, headers=headers, method='POST')
-        
+
         with urllib.request.urlopen(req, timeout=15) as response:
             res_data = json.loads(response.read().decode('utf-8'))
-            
+
             payment_id = str(res_data.get("id"))
             point_of_interaction = res_data.get("point_of_interaction", {})
             qr_data = point_of_interaction.get("transaction_data", {})
             qr_code = qr_data.get("qr_code")
 
             if not qr_code:
-                await update.message.reply_text(f"API respondeu, mas sem o código Pix. Retorno: {res_data}")
+                await update.message.reply_text(f"API respondeu, mas sem o código Pix.")
                 return
 
             PAGAMENTOS_PENDENTES[payment_id] = {"user_id": user.id, "valor": valor}
@@ -439,27 +429,17 @@ async def pix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    except urllib.error.HTTPError as e:
-        erro_corpo = e.read().decode('utf-8', errors='ignore')
-        logging.error(f"Erro HTTP Mercado Pago ({e.code}): {erro_corpo}")
-        await update.message.reply_text(f"Erro da API ({e.code}):\n`{erro_corpo}`", parse_mode="Markdown")
-    except urllib.error.URLError as e:
-        logging.error(f"Erro de URL/Conexão Mercado Pago: {e.reason}")
-        await update.message.reply_text(f"Erro de conexão com Mercado Pago: `{e.reason}`", parse_mode="Markdown")
     except Exception as e:
-        logging.error(f"Erro geral ao gerar Pix: {e}")
-        await update.message.reply_text(f"Erro inesperado: `{e}`", parse_mode="Markdown")
+        logging.error(f"Erro ao gerar Pix: {e}")
+        await update.message.reply_text(f"Erro ao processar Pix: `{e}`", parse_mode="Markdown")
 
 async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
     try:
         payment_id = query.data.replace("verificar_pix_", "").strip()
         user = query.from_user
 
-        headers = {
-            "Authorization": f"Bearer {MP_ACCESS_TOKEN}"
-        }
+        headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
         req = urllib.request.Request(f"{PIX_API_URL}/{payment_id}", headers=headers, method='GET')
 
         with urllib.request.urlopen(req, timeout=10) as response:
@@ -472,31 +452,24 @@ async def verificar_pix_callback(update: Update, context: ContextTypes.DEFAULT_T
                     saldo_atual = obter_saldo(user.id)
                     novo_saldo = saldo_atual + valor
                     atualizar_saldo(user.id, novo_saldo)
-
                     registrar_log_pix(user.id, user.first_name, valor, payment_id, status="aprovado")
 
                     texto = (
                         "Pagamento Confirmado!\n\n"
                         f"Valor creditado: R$ {valor:.2f}\n"
-                        f"Seu novo saldo e: R$ {novo_saldo:.2f}\n\n"
-                        "Agora voce ja pode realizar suas compras!"
+                        f"Seu novo saldo é: R$ {novo_saldo:.2f}\n\n"
+                        "Agora você já pode realizar suas compras!"
                     )
-                    keyboard = [[InlineKeyboardButton("GGs Disponiveis", callback_data="ggs_disponiveis")]]
-                    
+                    keyboard = [[InlineKeyboardButton("GGs Disponíveis", callback_data="ggs_disponiveis")]]
                     await query.answer("Pagamento Aprovado!")
                     await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
                 else:
-                    status_pt = {"pending": "Pendente", "in_process": "Em Processamento", "rejected": "Rejeitado"}.get(status, status)
-                    await query.answer(
-                        f"Pagamento ainda nao identificado (Status: {status_pt}). Aguarde instantes e tente novamente.", 
-                        show_alert=True
-                    )
+                    await query.answer("Pagamento ainda não identificado. Aguarde alguns instantes e tente novamente.", show_alert=True)
             else:
-                await query.answer("Nao foi possivel consultar o pagamento. Tente novamente.", show_alert=True)
-
+                await query.answer("Não foi possível consultar o pagamento.", show_alert=True)
     except Exception as e:
         logging.error(f"Erro ao verificar PIX: {e}")
-        await query.answer("Ocorreu um erro interno na consulta. Tente novamente.", show_alert=True)
+        await query.answer("Erro interno ao consultar pagamento.", show_alert=True)
 
 async def recarregar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -504,12 +477,11 @@ async def recarregar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     texto = (
         "Como recarregar seu saldo:\n\n"
-        "Envie o comando /pix seguido do valor que deseja recarregar diretamente no chat.\n\n"
+        "Envie o comando /pix seguido do valor que deseja recarregar no chat.\n\n"
         "Exemplos:\n"
         "- /pix 5 - Recarrega R$ 5,00\n"
-        "- /pix 10 - Recarrega R$ 10,00\n"
-        "- /pix 50 - Recarrega R$ 50,00\n\n"
-        "O QR Code e o Copia e Cola serao gerados automaticamente!"
+        "- /pix 10 - Recarrega R$ 10,00\n\n"
+        "O QR Code será gerado automaticamente!"
     )
     keyboard = [[InlineKeyboardButton("Voltar", callback_data="voltar_inicio")]]
     await query.edit_message_text(text=texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -517,61 +489,8 @@ async def recarregar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def voltar_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# Comandos Admin
-ADMINS = [7970384949, 7622528057]
-
-async def admpix(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMINS:
-        return
-
-    args = context.args
-    if len(args) < 2:
-        return
-
-    try:
-        target_id = int(args[0])
-        valor = float(args[1].replace(',', '.'))
-        saldo_atual = obter_saldo(target_id)
-        novo_saldo = saldo_atual + valor
-        atualizar_saldo(target_id, novo_saldo)
-
-        await update.message.reply_text(f"Sucesso! Novo saldo de {target_id}: R$ {novo_saldo:.2f}")
-        try:
-            await context.bot.send_message(chat_id=target_id, text=f"Voce recebeu R$ {valor:.2f} de saldo!")
-        except Exception:
-            pass
-    except ValueError:
-        pass
-
-async def addestoque(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMINS:
-        return
-
-    texto_completo = update.message.text[len("/addestoque"):].strip()
-    if not texto_completo:
-        return
-
-    linhas = texto_completo.split('\n')
-    primeira_linha = linhas[0].strip().split(' ', 1)
-    bin_id = primeira_linha[0].strip()
-    bandeira_informada = primeira_linha[1].strip() if len(primeira_linha) > 1 else "Cartao"
-
-    itens_novos = [l.strip() for l in linhas[1:] if l.strip()]
-    dados_bins = carregar_estoque()
-
-    if bin_id not in dados_bins:
-        dados_bins[bin_id] = {"bandeira": bandeira_informada, "estoque": []}
-    else:
-        dados_bins[bin_id]["bandeira"] = bandeira_informada
-
-    dados_bins[bin_id]["estoque"].extend(itens_novos)
-    salvar_estoque(dados_bins)
-    await update.message.reply_text(f"Adicionados {len(itens_novos)} itens na BIN {bin_id}.")
-
 # ----------------------------------------------------
-# Inicialização Assíncrona Oficial Compatível com Python 3.14
+# Inicialização
 # ----------------------------------------------------
 async def main():
     t = Thread(target=iniciar_servidor_web)
@@ -580,10 +499,8 @@ async def main():
 
     application = ApplicationBuilder().token(TOKEN).build()
 
-    application.add_handler(CommandHandlers := CommandHandler("start", start)) # type: ignore
+    application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("pix", pix_command))
-    application.add_handler(CommandHandler("admpix", admpix))
-    application.add_handler(CommandHandler("addestoque", addestoque))
 
     application.add_handler(CallbackQueryHandler(voltar_inicio, pattern="^voltar_inicio$"))
     application.add_handler(CallbackQueryHandler(ggs_disponiveis, pattern="^ggs_disponiveis$"))
@@ -593,11 +510,11 @@ async def main():
     application.add_handler(CallbackQueryHandler(recarregar_callback, pattern="^recarregar$"))
     application.add_handler(CallbackQueryHandler(verificar_pix_callback, pattern="^verificar_pix_"))
 
-    print("Iniciando bot com asyncio loop dedicado e historico persistente de compras...")
+    print("Iniciando bot...")
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
-    
+
     stop_event = asyncio.Event()
     await stop_event.wait()
 
